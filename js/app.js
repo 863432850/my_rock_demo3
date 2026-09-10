@@ -153,7 +153,7 @@ function docsStorageKeys(moduleId) {
 }
 
 function docsApiPath(moduleId, kind) {
-  return '/api/docs/' + encodeURIComponent(moduleId) + '/' + kind;
+  return 'api/docs/' + encodeURIComponent(moduleId) + '/' + kind;
 }
 
 function flattenSidebar(groups) {
@@ -265,6 +265,10 @@ function initLayout(activeId, opts) {
   var item = findSidebarItem(groups, activeId);
   var pageTitle = opts.pageTitle || (item && item.name) || mod.name;
 
+  // 跨目录导航前缀：由 js/path-adapter.js 根据当前页面深度计算
+  // （根目录页面为 ''，一级子目录页面为 '../'），保证菜单在任意深度页面都可点
+  var prefix = window.__PRJ_PREFIX__ || '';
+
   var header = document.getElementById('app-header');
   if (header) {
     header.innerHTML =
@@ -276,7 +280,7 @@ function initLayout(activeId, opts) {
       + '</div>'
       + '<nav class="app-topnav">'
       + MODULES.map(function (m) {
-        return '<a href="' + m.home + '" class="' + (m.id === moduleId ? 'active' : '') + '">' + m.name + '</a>';
+        return '<a href="' + prefix + m.home + '" class="' + (m.id === moduleId ? 'active' : '') + '">' + m.name + '</a>';
       }).join('')
       + '</nav>'
       + '<div class="app-header-right">'
@@ -290,7 +294,7 @@ function initLayout(activeId, opts) {
     menu.innerHTML = groups.map(function (group) {
       var items = (group.items || []).map(function (s) {
         var active = s.id === activeId ? ' active' : '';
-        return '<a class="sidebar-item' + active + '" href="' + s.href + '">' + s.name + '</a>';
+        return '<a class="sidebar-item' + active + '" href="' + prefix + s.href + '">' + s.name + '</a>';
       }).join('');
       return '<div class="sidebar-group">'
         + '<div class="sidebar-group-title">' + group.name + '</div>'
@@ -302,7 +306,7 @@ function initLayout(activeId, opts) {
   var crumb = document.getElementById('breadcrumb');
   if (crumb) {
     crumb.innerHTML =
-      '<a href="' + mod.home + '">' + mod.name + '</a>'
+      '<a href="' + prefix + mod.home + '">' + mod.name + '</a>'
       + '<span class="sep">/</span>'
       + '<span class="current">' + pageTitle + '</span>';
   }

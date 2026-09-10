@@ -8,7 +8,8 @@ function getFlowchartSrc(data) {
   var src = data.dataUrl || data.filePath || '';
   if (!src || data.dataUrl) return src;
   if (src.indexOf('http') !== 0 && src.indexOf('/') !== 0 && src.indexOf('data:') !== 0) {
-    src = '/' + src.replace(/^\/+/, '');
+    // 保持相对项目根的路径（由 <base> 自动加上部署前缀，兼容 GitHub Pages 子路径）
+    src = src.replace(/^\/+/, '');
   }
   // 文件路径加时间戳，避免保存后浏览器缓存旧图
   var stamp = data.savedAt ? encodeURIComponent(String(data.savedAt)) : String(Date.now());

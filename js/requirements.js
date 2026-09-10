@@ -288,7 +288,7 @@ function initRequirementsPage() {
       return;
     }
     attachListEl.innerHTML = reqAttachments.map(function (item) {
-      var href = '/' + String(item.filePath || '').replace(/^\/+/, '');
+      var href = String(item.filePath || '').replace(/^\/+/, '');
       var sizeText = item.sizeText || formatFileSize(item.size);
       return '<div class="requirements-attach-item" data-id="' + escapeHtmlAttr(item.id) + '">'
         + '<div class="requirements-attach-name" title="' + escapeHtmlAttr(item.fileName) + '">'

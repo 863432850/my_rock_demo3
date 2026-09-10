@@ -86,7 +86,7 @@ function optimizePlan() {
 
 // 返回
 document.getElementById('btn-ff-back').addEventListener('click', function () {
-  window.location.href = '/carbon-asset/index.html';
+  window.location.href = 'index.html';
 });
 
 // 保存
