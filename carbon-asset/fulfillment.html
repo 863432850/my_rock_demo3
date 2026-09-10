@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>履约申请 · 碳资产管理</title>
+  <link rel="stylesheet" href="/css/app.css" />
+  <style>
+    /* ===== 碳资产管理 · 履约申请 ===== */
+    .fulfillment-page {
+      background: #f5f7fb;
+      padding: 0 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .ff-card {
+      background: #fff;
+      border: 1px solid #eef1f4;
+      border-radius: 4px;
+      padding: 16px 20px;
+    }
+
+    /* 页面标题 */
+    .ff-page-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 20px;
+      background: #fff;
+      border: 1px solid #eef1f4;
+      border-radius: 4px;
+    }
+
+    .ff-page-back {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #606266;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 15px;
+      padding: 0;
+    }
+
+    .ff-page-back:hover {
+      color: var(--primary);
+    }
+
+    .ff-page-back svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .ff-page-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #303133;
+    }
+
+    /* 区块标题 */
+    .ff-section-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--primary);
+      margin-bottom: 14px;
+    }
+
+    .ff-section-title svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* 履约目标 */
+    .ff-goal {
+      display: flex;
+      align-items: flex-start;
+      gap: 20px;
+      margin-bottom: 6px;
+    }
+
+    .ff-goal-form {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px 18px;
+      align-content: start;
+    }
+
+    .ff-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .ff-field > span {
+      font-size: 13px;
+      color: #606266;
+    }
+
+    .ff-field > span .req {
+      color: #f5222d;
+      margin-right: 2px;
+    }
+
+    .ff-field select,
+    .ff-field input[type="text"],
+    .ff-field input[type="date"] {
+      height: 32px;
+      border: 1px solid #dcdfe6;
+      border-radius: 3px;
+      padding: 0 8px;
+      font-size: 13px;
+      color: #303133;
+      background: #fff;
+      outline: none;
+      transition: border-color 0.15s;
+      width: 100%;
+    }
+
+    .ff-field select:focus,
+    .ff-field input[type="text"]:focus,
+    .ff-field input[type="date"]:focus {
+      border-color: var(--primary);
+    }
+
+    /* 目标卡片 */
+    .ff-goal-right {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: flex-end;
+      margin-left: auto;
+      align-self: flex-start;
+    }
+
+    .ff-goal-warn-row {
+      display: flex;
+      justify-content: flex-end;
+      width: 100%;
+    }
+
+    .ff-goal-warn-row .btn-warn {
+      height: 30px;
+      padding: 0 14px;
+      font-size: 13px;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .ff-goal-cards {
+      display: flex;
+      gap: 12px;
+    }
+
+    .ff-goal-card {
+      width: 140px;
+      background: #f5f8f6;
+      border-radius: 6px;
+      padding: 16px 12px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .ff-goal-card-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .ff-goal-card-icon svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .ff-goal-card-label {
+      font-size: 12px;
+      color: #8a9099;
+    }
+
+    .ff-goal-card-value {
+      font-size: 13px;
+      color: #303133;
+      font-weight: 500;
+    }
+
+    /* 履约方案 */
+    .ff-plan-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .ff-plan-header .ff-section-title {
+      margin-bottom: 0;
+    }
+
+    .ff-plan-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .ff-plan-actions .btn {
+      height: 30px;
+      padding: 0 12px;
+      font-size: 13px;
+    }
+
+    .ff-plan-actions .btn-primary {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
+    .ff-plan-actions .btn-primary:hover {
+      background: var(--primary-dark);
+    }
+
+    .ff-plan-actions .tips {
+      position: relative;
+      color: #606266;
+    }
+
+    .ff-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      border: 1px solid #eef1f4;
+    }
+
+    .ff-table thead th {
+      background: #e8f5e9;
+      color: #303133;
+      font-weight: 600;
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid #eef1f4;
+    }
+
+    .ff-table tbody td {
+      padding: 40px 12px;
+      text-align: center;
+      color: #909399;
+    }
+
+    .ff-table tbody tr:hover {
+      background: #fafcfa;
+    }
+
+    /* 申请信息 */
+    .ff-info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px 24px;
+      margin-bottom: 20px;
+    }
+
+    /* 附件 */
+    .ff-attach-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .ff-attach-field > span {
+      font-size: 13px;
+      color: #606266;
+    }
+
+    .ff-attach-field .btn-link {
+      background: none;
+      border: none;
+      color: var(--primary);
+      cursor: pointer;
+      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0;
+      justify-content: flex-start;
+    }
+
+    .ff-attach-field .btn-link svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .ff-plan-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .ff-plan-btn .btn-primary {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
+    .ff-plan-btn .btn-primary:hover {
+      background: var(--primary-dark);
+    }
+
+    .ff-plan-btn .btn {
+      height: 34px;
+      padding: 0 20px;
+      font-size: 14px;
+    }
+
+    /* 推送履约预警按钮（橙色警示） */
+    .btn-warn {
+      background: var(--warning);
+      color: #fff;
+      border-color: var(--warning);
+    }
+
+    .btn-warn:hover {
+      background: #e07b0e;
+      border-color: #e07b0e;
+    }
+
+    .ff-goal-card .btn-warn {
+      height: 26px;
+      padding: 0 12px;
+      font-size: 12px;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header" id="app-header"></header>
+    <div class="app-body">
+      <aside class="app-sidebar">
+        <nav class="sidebar-menu" id="sidebar-menu"></nav>
+      </aside>
+      <main class="app-main">
+        <div class="breadcrumb" id="breadcrumb"></div>
+        <div class="content-area fulfillment-page">
+
+          <!-- 页面头 -->
+          <div class="ff-page-head">
+            <button type="button" class="ff-page-back" id="btn-ff-back">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+              返回
+            </button>
+            <span class="ff-page-title">提交履约申请</span>
+          </div>
+
+          <!-- 履约目标 -->
+          <div class="ff-card">
+            <div class="ff-section-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              履约目标
+            </div>
+            <div class="ff-goal">
+              <div class="ff-goal-form">
+                <label class="ff-field">
+                  <span><i class="req">*</i>碳市场</span>
+                  <select id="ff-market">
+                    <option value="全国碳市场" selected>全国碳市场</option>
+                  </select>
+                </label>
+                <label class="ff-field">
+                  <span><i class="req">*</i>行业</span>
+                  <select id="ff-industry">
+                    <option value="建材" selected>建材</option>
+                  </select>
+                </label>
+                <label class="ff-field">
+                  <span><i class="req">*</i>履约周期</span>
+                  <select id="ff-cycle">
+                    <option value="第五个履约周期25" selected>第五个履约周期25</option>
+                  </select>
+                </label>
+              </div>
+              <div class="ff-goal-right">
+                <div class="ff-goal-warn-row">
+                  <button type="button" class="btn btn-warn" id="btn-ff-warn">推送履约预警</button>
+                </div>
+                <div class="ff-goal-cards">
+                  <div class="ff-goal-card">
+                    <div class="ff-goal-card-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>
+                    </div>
+                    <div class="ff-goal-card-label">当前应清缴配额量</div>
+                    <div class="ff-goal-card-value" id="ff-due">-- tCO<sub>2</sub></div>
+                  </div>
+                  <div class="ff-goal-card">
+                    <div class="ff-goal-card-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 9l-5 5-3-3-4 4"/></svg>
+                    </div>
+                    <div class="ff-goal-card-label">累计清缴配额量</div>
+                    <div class="ff-goal-card-value" id="ff-cleared">-- tCO<sub>2</sub></div>
+                  </div>
+                  <div class="ff-goal-card">
+                    <div class="ff-goal-card-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+                    </div>
+                    <div class="ff-goal-card-label">账户余额</div>
+                    <div class="ff-goal-card-value" id="ff-balance">-- tCO<sub>2</sub></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 履约方案 -->
+          <div class="ff-card">
+            <div class="ff-plan-header">
+              <div class="ff-section-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                履约方案
+              </div>
+              <div class="ff-plan-actions">
+                <button type="button" class="btn tips" title="点击查看示例">导出示例</button>
+                <button type="button" class="btn btn-primary" id="btn-ff-optimize">智能履约寻优</button>
+              </div>
+            </div>
+            <table class="ff-table">
+              <thead>
+                <tr>
+                  <th>行业</th>
+                  <th>产品名称</th>
+                  <th>单次清缴量（吨）</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="ff-plan-body">
+                <tr>
+                  <td colspan="4">暂无数据</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 申请人 / 联系方式 -->
+          <div class="ff-card">
+            <div class="ff-info-grid">
+              <label class="ff-field">
+                <span><i class="req">*</i>申请人</span>
+                <input type="text" id="ff-applicant" value="张三" />
+              </label>
+              <label class="ff-field">
+                <span><i class="req">*</i>联系方式</span>
+                <input type="text" id="ff-phone" value="18012345678" />
+              </label>
+            </div>
+            <div class="ff-attach-field">
+              <span>附件</span>
+              <button type="button" class="btn-link" id="ff-attach">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                添加文件
+              </button>
+            </div>
+          </div>
+
+          <!-- 底部按钮 -->
+          <div class="ff-plan-btn">
+            <button type="button" class="btn" id="btn-ff-save">保存</button>
+            <button type="button" class="btn btn-primary" id="btn-ff-submit">发起申请</button>
+          </div>
+
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script src="/carbon-asset/js/fulfillment.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "name": "verify-data-fill",
+  "version": "1.0.0",
+  "private": true,
+  "description": "核查数据填报原型（系统壳 + 流程图/需求说明）",
+  "scripts": {
+    "start": "node server.js",
+    "serve": "node server.js"
+  }
+}

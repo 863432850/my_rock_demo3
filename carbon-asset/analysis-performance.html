@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>碳履约分析 · 碳资产管理</title>
+  <link rel="stylesheet" href="/css/app.css" />
+  <link rel="stylesheet" href="/carbon-asset/css/analysis.css" />
+  <style>
+    .f-legend { font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .f-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 4px; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header" id="app-header"></header>
+    <div class="app-body">
+      <aside class="app-sidebar">
+        <nav class="sidebar-menu" id="sidebar-menu"></nav>
+      </aside>
+      <main class="app-main">
+        <div class="breadcrumb" id="breadcrumb"></div>
+        <div class="content-area ca-page">
+
+          <!-- 顶部指标卡 -->
+          <div class="ca-kpis">
+            <div class="ca-kpi">
+              <div class="ca-kpi-head">
+                <span class="ca-kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h10M7 14h6"/></svg></span>
+                <span class="ca-kpi-label">清缴总量</span>
+              </div>
+              <div class="ca-kpi-value" id="k-clear">--<span class="unit">tCO₂</span></div>
+              <div class="ca-kpi-sub" id="k-clear-sub">--</div>
+            </div>
+
+            <div class="ca-kpi c-blue">
+              <div class="ca-kpi-head">
+                <span class="ca-kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 8l7 4 7-4M5 16l7-4 7 4"/></svg></span>
+                <span class="ca-kpi-label">缺口量</span>
+              </div>
+              <div class="ca-kpi-value" id="k-gap">--<span class="unit">tCO₂</span></div>
+              <div class="ca-kpi-sub" id="k-gap-sub">--</div>
+            </div>
+
+            <div class="ca-kpi c-orange">
+              <div class="ca-kpi-head">
+                <span class="ca-kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+                <span class="ca-kpi-label">履约率</span>
+              </div>
+              <div class="ca-kpi-value" id="k-rate">--</div>
+              <div class="ca-kpi-sub">清缴 / 应缴</div>
+            </div>
+
+            <div class="ca-kpi c-red">
+              <div class="ca-kpi-head">
+                <span class="ca-kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg></span>
+                <span class="ca-kpi-label">履约机构数</span>
+              </div>
+              <div class="ca-kpi-value" id="k-orgs">--<span class="unit">家</span></div>
+              <div class="ca-kpi-sub" id="k-orgs-sub">--</div>
+            </div>
+          </div>
+
+          <!-- 筛选栏 -->
+          <div class="ca-filter">
+            <label class="ca-field">
+              <span>履约年度</span>
+              <select id="f-year"></select>
+            </label>
+            <label class="ca-field">
+              <span>碳市场</span>
+              <select id="f-market"></select>
+            </label>
+            <label class="ca-field">
+              <span>清缴方式</span>
+              <select id="f-method"></select>
+            </label>
+            <label class="ca-field">
+              <span>履约状态</span>
+              <select id="f-status"></select>
+            </label>
+            <div class="ca-filter-actions">
+              <button type="button" class="ca-btn ca-btn-primary" id="f-search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
+                查询
+              </button>
+              <button type="button" class="ca-btn" id="f-reset">重置</button>
+            </div>
+          </div>
+
+          <!-- 统计粒度 -->
+          <div class="ca-grain-head">
+            <div class="ca-grain">
+              <span class="ca-grain-title">统计粒度</span>
+              <button type="button" class="ca-grain-tab active" data-grain="period">按履约期</button>
+              <button type="button" class="ca-grain-tab" data-grain="market">按碳市场</button>
+            </div>
+            <div class="ca-card-hint">支持趋势 / 均值 / 极值 / 同比 / 构成 / 分布多维分析 · 点击折线点查看数值</div>
+          </div>
+
+          <!-- 趋势 + 极值 -->
+          <div class="ca-grid">
+            <div class="ca-card col-span-2">
+              <div class="ca-card-head">
+                <div class="ca-card-title">清缴趋势（含均值线）</div>
+                <div class="f-legend"><i style="background:#00a854;"></i>应缴量<i style="background:#1890ff;"></i>清缴量<i style="background:#909399;height:2px;border-radius:1px;"></i>均值</div>
+              </div>
+              <div id="f-trend-chart"></div>
+              <div class="ca-insights" id="f-trend-insights" style="margin-top:12px;"></div>
+            </div>
+
+            <!-- 同比 -->
+            <div class="ca-card">
+              <div class="ca-card-head">
+                <div class="ca-card-title">清缴量同比</div>
+                <div class="ca-card-hint">本年度 vs 上年同期</div>
+              </div>
+              <div id="f-yoy-chart"></div>
+            </div>
+
+            <!-- 构成 -->
+            <div class="ca-card">
+              <div class="ca-card-head">
+                <div class="ca-card-title">清缴方式构成</div>
+                <div class="ca-card-hint">配额 / CCER / 货币清缴占比</div>
+              </div>
+              <div id="f-mix-chart"></div>
+            </div>
+
+            <!-- 分布 -->
+            <div class="ca-card">
+              <div class="ca-card-head">
+                <div class="ca-card-title">各碳市场清缴分布</div>
+                <div class="ca-card-hint">横向条形</div>
+              </div>
+              <div id="f-dist-chart"></div>
+            </div>
+
+            <!-- 机构清缴排名 -->
+            <div class="ca-card">
+              <div class="ca-card-head">
+                <div class="ca-card-title">机构清缴量 Top5</div>
+                <div class="ca-card-hint">按清缴量排序</div>
+              </div>
+              <div id="f-org-chart"></div>
+            </div>
+          </div>
+
+          <!-- 缺口预警台账 -->
+          <div class="ca-card" style="grid-column:span 2;">
+            <div class="ca-card-head">
+              <div class="ca-card-title">履约缺口预警台账</div>
+              <div class="ca-card-hint">缺口量超过预警线的机构</div>
+            </div>
+            <div class="ca-table-wrap">
+              <table class="ca-table">
+                <thead>
+                  <tr>
+                    <th>机构名称</th>
+                    <th>履约周期</th>
+                    <th>碳市场</th>
+                    <th class="is-num">应缴量(tCO₂)</th>
+                    <th class="is-num">清缴量(tCO₂)</th>
+                    <th class="is-num">缺口量(tCO₂)</th>
+                    <th>履约率</th>
+                    <th>预警等级</th>
+                  </tr>
+                </thead>
+                <tbody id="f-alert-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script src="/carbon-asset/js/charts.js"></script>
+  <script src="/carbon-asset/js/analysis-performance.js"></script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>环比分析 · 碳数据分析</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header" id="app-header"></header>
+    <div class="app-body">
+      <aside class="app-sidebar">
+        <nav class="sidebar-menu" id="sidebar-menu"></nav>
+      </aside>
+      <main class="app-main">
+        <div class="breadcrumb" id="breadcrumb"></div>
+        <div class="content-area analysis-page">
+          <div class="analysis-card"
+               style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:14px;text-align:center;">
+            <h3 style="margin:0;font-size:18px;font-weight:600;color:#1f2329;">环比分析</h3>
+            <p style="margin:0;color:#8a9099;font-size:14px;line-height:1.7;">
+              【与同比分析同样的调整，只增加阈值设置和推送异常功能】
+            </p>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    initLayout('mom', { moduleId: 'analysis' });
+  </script>
+</body>
+</html>

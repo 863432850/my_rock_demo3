@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>需求说明/注意事项 · 核查管理</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body class="doc-page">
+  <div class="app-shell">
+    <header class="app-header" id="app-header"></header>
+    <div class="app-body">
+      <aside class="app-sidebar">
+        <nav class="sidebar-menu" id="sidebar-menu"></nav>
+      </aside>
+      <main class="app-main requirements-main">
+        <div class="breadcrumb" id="breadcrumb"></div>
+        <div class="content-area requirements-page">
+          <div class="doc-toolbar requirements-toolbar">
+            <div class="rte-toolbar" id="rte-toolbar">
+              <button type="button" class="rte-btn" data-cmd="bold" title="加粗"><b>B</b></button>
+              <button type="button" class="rte-btn" data-cmd="italic" title="斜体"><i>I</i></button>
+              <button type="button" class="rte-btn" data-cmd="underline" title="下划线"><u>U</u></button>
+              <span class="rte-sep"></span>
+              <select id="rte-font-size" class="rte-select" title="文字大小">
+                <option value="">字号</option>
+                <option value="12px">12</option>
+                <option value="14px">14</option>
+                <option value="16px">16</option>
+                <option value="18px">18</option>
+                <option value="20px">20</option>
+                <option value="24px">24</option>
+                <option value="28px">28</option>
+              </select>
+              <select id="rte-line-height" class="rte-select" title="行距">
+                <option value="">行距</option>
+                <option value="1">1.0</option>
+                <option value="1.15">1.15</option>
+                <option value="1.5">1.5</option>
+                <option value="1.75">1.75</option>
+                <option value="2">2.0</option>
+                <option value="2.5">2.5</option>
+                <option value="3">3.0</option>
+              </select>
+              <label class="rte-color-btn" title="文字颜色">
+                <span>字色</span>
+                <input type="color" id="rte-fore-color" value="#303133" />
+              </label>
+              <label class="rte-color-btn rte-bg-color" title="文字底色">
+                <span>底色</span>
+                <input type="color" id="rte-bg-color" value="#fff566" />
+              </label>
+              <span class="rte-sep"></span>
+              <button type="button" class="rte-btn" data-cmd="formatBlock" data-value="h2" title="标题">H</button>
+              <button type="button" class="rte-btn" data-cmd="insertUnorderedList" title="无序列表">•</button>
+              <button type="button" class="rte-btn" data-cmd="insertOrderedList" title="有序列表">1.</button>
+              <span class="rte-sep"></span>
+              <button type="button" class="rte-btn" data-cmd="justifyLeft" title="左对齐">左</button>
+              <button type="button" class="rte-btn" data-cmd="justifyCenter" title="居中">中</button>
+              <span class="rte-sep"></span>
+              <button type="button" class="rte-btn" id="btn-insert-link" title="插入链接">链</button>
+              <button type="button" class="rte-btn" data-cmd="removeFormat" title="清除格式">清</button>
+            </div>
+            <div class="doc-toolbar-right">
+              <span class="docs-server-badge warn" id="docs-server-badge">检测写入服务…</span>
+              <span class="doc-save-hint" id="req-save-hint"></span>
+              <button type="button" class="btn btn-primary" id="btn-req-save">保存到代码包</button>
+            </div>
+          </div>
+          <div class="requirements-attachments" id="req-attachments-panel">
+            <div class="requirements-attachments-head">
+              <div class="requirements-attachments-title">
+                <span class="lbl">附件</span>
+                <span class="attach-hint">支持 md / Word / Excel / PDF 等，可上传后下载，按模块隔离保存到代码包</span>
+              </div>
+              <label class="btn btn-primary upload-label" id="req-attach-upload-label">
+                上传附件
+                <input type="file" id="req-attach-upload" multiple hidden />
+              </label>
+            </div>
+            <div class="requirements-attach-list" id="req-attach-list"></div>
+          </div>
+          <div class="rte-editor-wrap">
+            <div class="rte-editor" id="rte-editor" contenteditable="true" data-placeholder="在此填写需求说明、设计逻辑与注意事项，便于与开发沟通…"></div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>loadModuleDocDefaults('/js/requirements.js');</script>
+</body>
+</html>

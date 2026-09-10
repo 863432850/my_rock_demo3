@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>已办事件 · 系统管理</title>
+  <link rel="stylesheet" href="/css/app.css" />
+  <style>
+    /* ===== 已办事件页面专用样式 ===== */
+    .system-page {
+      background: #f5f7fb;
+      padding: 0 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* 筛选区 */
+    .system-filter {
+      background: #fff;
+      border: 1px solid #eef1f4;
+      border-radius: 4px;
+      padding: 14px 16px 10px;
+    }
+
+    .system-filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 12px 16px;
+    }
+
+    .system-filter-row + .system-filter-row {
+      margin-top: 10px;
+    }
+
+    .system-field {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .system-field > span {
+      font-size: 13px;
+      color: #606266;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .system-field input[type="text"],
+    .system-field select {
+      height: 30px;
+      border: 1px solid #dcdfe6;
+      border-radius: 3px;
+      padding: 0 8px;
+      font-size: 13px;
+      color: #303133;
+      background: #fff;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .system-field input[type="text"]:focus,
+    .system-field select:focus {
+      border-color: var(--primary);
+    }
+
+    .system-field input[type="text"] {
+      width: 160px;
+    }
+
+    .system-field select {
+      width: 140px;
+    }
+
+    /* 日期范围选择器 */
+    .system-date-range-picker {
+      position: relative;
+      display: inline-block;
+    }
+
+    .system-date-range-input {
+      width: 220px;
+      height: 30px;
+      border: 1px solid #dcdfe6;
+      border-radius: 3px;
+      padding: 0 30px 0 8px;
+      font-size: 13px;
+      color: #303133;
+      background: #fff;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .system-date-range-input:focus {
+      border-color: var(--primary);
+    }
+
+    .system-date-range-input::placeholder {
+      color: #c0c4cc;
+    }
+
+    .system-date-range-icon {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #c0c4cc;
+      pointer-events: none;
+    }
+
+    .system-date-range-icon svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* 日历弹窗 */
+    .system-date-picker-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      margin-top: 4px;
+      background: #fff;
+      border: 1px solid #e4e7ed;
+      border-radius: 4px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+      padding: 12px;
+      z-index: 1000;
+      display: none;
+    }
+
+    .system-date-picker-dropdown.show {
+      display: block;
+    }
+
+    .system-date-picker-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .system-date-picker-nav {
+      display: flex;
+      gap: 4px;
+    }
+
+    .system-date-picker-nav button {
+      width: 28px;
+      height: 28px;
+      border: 1px solid #dcdfe6;
+      border-radius: 3px;
+      background: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #606266;
+      transition: all 0.15s;
+    }
+
+    .system-date-picker-nav button:hover {
+      color: var(--primary);
+      border-color: var(--primary);
+    }
+
+    .system-date-picker-nav button svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .system-date-picker-month-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #303133;
+      min-width: 120px;
+      text-align: center;
+    }
+
+    .system-date-picker-body {
+      display: flex;
+      gap: 16px;
+    }
+
+    .system-date-picker-panel {
+      flex: 1;
+      min-width: 240px;
+    }
+
+    .system-date-picker-weekdays {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 2px;
+      margin-bottom: 4px;
+    }
+
+    .system-date-picker-weekdays span {
+      text-align: center;
+      font-size: 12px;
+      color: #909399;
+      padding: 4px 0;
+    }
+
+    .system-date-picker-days {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 2px;
+    }
+
+    .system-date-picker-day {
+      text-align: center;
+      padding: 6px 0;
+      font-size: 13px;
+      color: #303133;
+      cursor: pointer;
+      border-radius: 3px;
+      transition: all 0.15s;
+    }
+
+    .system-date-picker-day:hover:not(.disabled):not(.empty) {
+      background: #f0f9eb;
+      color: var(--primary);
+    }
+
+    .system-date-picker-day.empty {
+      cursor: default;
+    }
+
+    .system-date-picker-day.disabled {
+      color: #c0c4cc;
+      cursor: not-allowed;
+    }
+
+    .system-date-picker-day.other-month {
+      color: #c0c4cc;
+    }
+
+    .system-date-picker-day.today {
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .system-date-picker-day.in-range {
+      background: #f0f9eb;
+    }
+
+    .system-date-picker-day.range-start,
+    .system-date-picker-day.range-end {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .system-date-picker-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #f0f0f0;
+    }
+
+    .system-date-picker-footer .btn {
+      height: 28px;
+      padding: 0 12px;
+      font-size: 12px;
+    }
+
+    .system-date-picker-footer .btn-primary {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
+    /* 表格区 */
+    .system-table-card {
+      background: #fff;
+      border: 1px solid #eef1f4;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .system-table-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 10px 16px;
+      gap: 8px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .system-table-toolbar .btn {
+      height: 30px;
+      padding: 0 14px;
+      font-size: 13px;
+    }
+
+    .system-table-toolbar .btn-primary {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
+    .system-table-toolbar .btn-icon {
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #dcdfe6;
+      background: #fff;
+      border-radius: 3px;
+      cursor: pointer;
+      color: #606266;
+    }
+
+    .system-table-toolbar .btn-icon svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .system-table-wrap {
+      overflow-x: auto;
+    }
+
+    .system-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .system-table thead th {
+      background: #e8f5e9;
+      color: #303133;
+      font-weight: 600;
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid #eef1f4;
+      white-space: nowrap;
+    }
+
+    .system-table tbody td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #f0f0f0;
+      color: #303133;
+      vertical-align: middle;
+    }
+
+    .system-table tbody tr:hover {
+      background: #f7fbf8;
+    }
+
+    .system-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .system-table .op-btn {
+      display: inline-block;
+      padding: 0;
+      font-size: 13px;
+      border: none;
+      background: transparent;
+      color: var(--primary);
+      cursor: pointer;
+      margin-right: 12px;
+      transition: opacity 0.15s;
+    }
+
+    .system-table .op-btn:hover {
+      opacity: 0.7;
+    }
+
+    .system-table .op-btn:last-child {
+      margin-right: 0;
+    }
+
+    /* 分页 */
+    .system-pagination {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 12px 16px;
+      gap: 8px;
+      font-size: 13px;
+      color: #606266;
+    }
+
+    .system-pagination select {
+      height: 28px;
+      border: 1px solid #dcdfe6;
+      border-radius: 3px;
+      padding: 0 6px;
+      font-size: 13px;
+      color: #303133;
+      background: #fff;
+    }
+
+    .system-pagination .page-btn {
+      width: 28px;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #dcdfe6;
+      border-radius: 3px;
+      background: #fff;
+      color: #606266;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .system-pagination .page-btn:hover:not(.disabled):not(.active) {
+      color: var(--primary);
+      border-color: var(--primary);
+    }
+
+    .system-pagination .page-btn.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
+    .system-pagination .page-btn.disabled {
+      color: #c0c4cc;
+      cursor: not-allowed;
+    }
+
+    .system-pagination .page-info {
+      margin-left: 4px;
+    }
+
+    .system-pagination .page-info input {
+      width: 40px;
+      height: 28px;
+      text-align: center;
+      border: 1px solid #dcdfe6;
+      border-radius: 3px;
+      font-size: 13px;
+      margin: 0 4px;
+    }
+
+    /* 空态 */
+    .system-empty {
+      text-align: center;
+      padding: 40px 0;
+      color: #909399;
+      font-size: 14px;
+    }
+
+    /* 总结弹窗 */
+    .summary-modal .modal-body {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .summary-section {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .summary-section label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #303133;
+    }
+
+    .summary-section textarea {
+      width: 100%;
+      min-height: 80px;
+      border: 1px solid #dcdfe6;
+      border-radius: 3px;
+      padding: 8px 10px;
+      font-size: 13px;
+      color: #303133;
+      font-family: inherit;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .summary-section textarea:focus {
+      border-color: var(--primary);
+    }
+
+    .summary-section textarea[readonly] {
+      background: #f5f7fa;
+      color: #606266;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header" id="app-header"></header>
+    <div class="app-body">
+      <aside class="app-sidebar">
+        <nav class="sidebar-menu" id="sidebar-menu"></nav>
+      </aside>
+      <main class="app-main">
+        <div class="breadcrumb" id="breadcrumb"></div>
+        <div class="content-area system-page">
+
+          <!-- 筛选区 -->
+          <div class="system-filter">
+            <div class="system-filter-row">
+              <label class="system-field">
+                <span>标题</span>
+                <input type="text" id="sys-title" placeholder="" />
+              </label>
+              <label class="system-field">
+                <span>类型</span>
+                <input type="text" id="sys-type" placeholder="" />
+              </label>
+              <label class="system-field">
+                <span>办理时间</span>
+                <div class="system-date-range-picker">
+                  <input type="text" class="system-date-range-input" id="sys-date-range" placeholder="请选择日期范围" readonly />
+                  <span class="system-date-range-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                  </span>
+                  <div class="system-date-picker-dropdown" id="sys-date-picker">
+                    <div class="system-date-picker-header">
+                      <div class="system-date-picker-nav">
+                        <button type="button" id="sys-date-prev-year" title="上一年">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
+                        </button>
+                        <button type="button" id="sys-date-prev-month" title="上一月">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                        </button>
+                      </div>
+                      <span class="system-date-picker-month-title" id="sys-date-month-title"></span>
+                      <div class="system-date-picker-nav">
+                        <button type="button" id="sys-date-next-month" title="下一月">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+                        <button type="button" id="sys-date-next-year" title="下一年">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="system-date-picker-body">
+                      <div class="system-date-picker-panel" id="sys-date-panel-left"></div>
+                      <div class="system-date-picker-panel" id="sys-date-panel-right"></div>
+                    </div>
+                    <div class="system-date-picker-footer">
+                      <button type="button" class="btn" id="sys-date-clear">清空</button>
+                      <button type="button" class="btn btn-primary" id="sys-date-confirm">确定</button>
+                    </div>
+                  </div>
+                </div>
+              </label>
+              <label class="system-field">
+                <span>发起人所在单位</span>
+                <select id="sys-org">
+                  <option value="">请选择</option>
+                  <option value="河南钢铁集团有限公司">河南钢铁集团有限公司</option>
+                  <option value="河南安钢周口钢铁有限责任公司">河南安钢周口钢铁有限责任公司</option>
+                </select>
+              </label>
+              <label class="system-field">
+                <span>发起人</span>
+                <input type="text" id="sys-initiator" placeholder="请选择" />
+              </label>
+            </div>
+            <div class="system-filter-row">
+              <label class="system-field">
+                <span>编号</span>
+                <input type="text" id="sys-code" placeholder="" />
+              </label>
+              <div class="system-filter-actions">
+                <button type="button" class="btn btn-primary" id="btn-sys-search">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
+                  查询
+                </button>
+                <button type="button" class="btn" id="btn-sys-reset">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+                  重置
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 表格区 -->
+          <div class="system-table-card">
+            <div class="system-table-toolbar">
+              <button type="button" class="btn btn-primary" id="btn-sys-export">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                导出
+              </button>
+              <button type="button" class="btn-icon" title="列设置">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+              </button>
+            </div>
+            <div class="system-table-wrap">
+              <table class="system-table">
+                <thead>
+                  <tr>
+                    <th style="width:60px;">序号</th>
+                    <th>标题</th>
+                    <th>类型</th>
+                    <th>办理时间</th>
+                    <th>发起人所在单位</th>
+                    <th>发起人</th>
+                    <th>编号</th>
+                    <th style="width:140px;">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="system-table-body"></tbody>
+              </table>
+            </div>
+            <div class="system-pagination" id="system-pagination"></div>
+          </div>
+
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- 总结弹窗 -->
+  <div class="modal-overlay" id="summary-modal">
+    <div class="modal summary-modal" role="dialog" aria-modal="true" style="width:640px;">
+      <div class="modal-header">
+        <span>事件总结评估</span>
+        <button type="button" class="modal-close" id="btn-summary-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="summary-section">
+          <label>事件标题</label>
+          <textarea id="summary-title" readonly></textarea>
+        </div>
+        <div class="summary-section">
+          <label>处理过程总结</label>
+          <textarea id="summary-process" placeholder="请简要描述事件处理过程…"></textarea>
+        </div>
+        <div class="summary-section">
+          <label>不足分析</label>
+          <textarea id="summary-shortcoming" placeholder="分析处理过程中的不足之处…"></textarea>
+        </div>
+        <div class="summary-section">
+          <label>改进建议</label>
+          <textarea id="summary-suggestion" placeholder="提出后续改进建议…"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" id="btn-summary-cancel">取消</button>
+        <button type="button" class="btn btn-primary" id="btn-summary-ok">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script src="/system/js/system.js"></script>
+</body>
+</html>

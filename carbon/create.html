@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>碳目标制定 · 碳目标管理</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body class="wizard-page">
+  <div class="app-shell">
+    <header class="app-header" id="app-header"></header>
+    <div class="app-body">
+      <aside class="app-sidebar">
+        <nav class="sidebar-menu" id="sidebar-menu"></nav>
+      </aside>
+      <main class="app-main">
+        <div class="content-area">
+          <div class="wizard-head">
+            <div class="wizard-title">
+              <button type="button" class="back-btn" id="btn-back" title="返回">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+              </button>
+              <span id="wizard-title">碳目标制定</span>
+            </div>
+            <div class="stepper">
+              <div class="step active" id="step-1-label">
+                <span class="step-dot" id="step-1-dot">1</span>
+                <span>指标选择</span>
+              </div>
+              <div class="step-line"></div>
+              <div class="step" id="step-2-label">
+                <span class="step-dot" id="step-2-dot">2</span>
+                <span>目标制定</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard-body">
+            <div id="panel-step1">
+              <div class="section-card">
+                <div class="section-title">基本信息</div>
+                <div class="field-grid">
+                  <div class="field" id="field-name">
+                    <label><span class="req">*</span>目标名称</label>
+                    <div class="input-wrap">
+                      <input id="target-name" type="text" maxlength="20" placeholder="请输入目标名称" />
+                      <span class="char-count"><span id="name-count">0</span> / 20</span>
+                    </div>
+                    <div class="field-error" id="err-name"></div>
+                  </div>
+                  <div class="field" id="field-dimension">
+                    <label><span class="req">*</span>目标时间维度</label>
+                    <div class="select-box" id="dim-select">
+                      <button type="button" class="select-trigger" id="dim-trigger">
+                        <span class="ph" id="dim-text">请选择</span>
+                        <span class="chevron">▾</span>
+                      </button>
+                      <div class="select-dropdown" id="dim-dropdown">
+                        <div class="select-option" data-value="年度">年度</div>
+                        <div class="select-option" data-value="月度">月度</div>
+                      </div>
+                    </div>
+                    <div class="field-error" id="err-dimension"></div>
+                  </div>
+                  <div class="field" id="field-year">
+                    <label><span class="req">*</span>目标年份</label>
+                    <div class="year-box">
+                      <button type="button" class="year-trigger" id="year-trigger">
+                        <span class="ph" id="year-text">请选择</span>
+                        <span class="chevron">▾</span>
+                      </button>
+                      <div class="year-panel" id="year-panel">
+                        <div class="year-grid" id="year-grid"></div>
+                      </div>
+                    </div>
+                    <div class="field-error" id="err-year"></div>
+                  </div>
+                  <div class="field hidden" id="field-month">
+                    <label><span class="req">*</span>目标月份</label>
+                    <div class="select-box" id="month-select">
+                      <button type="button" class="select-trigger" id="month-trigger">
+                        <span class="ph" id="month-text">请选择</span>
+                        <span class="chevron">▾</span>
+                      </button>
+                      <div class="select-dropdown" id="month-dropdown"></div>
+                    </div>
+                    <div class="field-error" id="err-month"></div>
+                  </div>
+                </div>
+                <div class="attach-row">
+                  <span class="lbl">附件</span>
+                  <span class="attach-hint">请最多上传五个不超过100MB的文件，支持.pdf, .docx, .xlsx, .xls格式</span>
+                  <div>
+                    <button type="button" class="add-file" id="btn-add-file">+ 添加文件</button>
+                    <input id="file-input" type="file" class="hidden" accept=".pdf,.docx,.xlsx,.xls" multiple />
+                  </div>
+                  <div class="file-list" id="file-list"></div>
+                </div>
+              </div>
+
+              <div class="section-card">
+                <div class="section-head-row">
+                  <div class="section-title">
+                    指标配置
+                    <span class="info"><i class="info-icon">i</i> 碳目标考核指标</span>
+                  </div>
+                  <button type="button" class="btn btn-primary" id="btn-config">指标配置</button>
+                </div>
+                <div class="table-wrap">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>序号</th>
+                        <th>指标名称</th>
+                        <th>单位</th>
+                        <th>计算逻辑</th>
+                      </tr>
+                    </thead>
+                    <tbody id="indicator-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="choice-panel">
+                <div class="choice-panel-head">是否分解到下级</div>
+                <div class="choice-panel-body">
+                  <button type="button" class="choice-option selected" data-decompose="1" id="opt-decompose-yes">
+                    <div class="choice-title">
+                      <span class="radio"></span>
+                      分解到下级
+                    </div>
+                    <p>下级企业将管理层制定的年度目标拆解细化到月度目标，按实际与月目标对比预警；预警后由企业申请动态调整，管理层审核。</p>
+                  </button>
+                  <button type="button" class="choice-option" data-decompose="0" id="opt-decompose-no">
+                    <div class="choice-title">
+                      <span class="radio"></span>
+                      不分解
+                    </div>
+                    <p>无需下级企业参与分解。下一步由管理层将年度目标拆成月度；跟踪仍按月预警，可由管理层发起动态调整。</p>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div id="panel-step2" class="hidden">
+              <div class="toolbar-right" id="step2-plan-bar">
+                <button type="button" class="btn btn-primary" id="btn-tpl">生产计划模板下载</button>
+                <button type="button" class="btn btn-primary" id="btn-import">生产计划解析导入</button>
+                <button type="button" class="btn btn-primary" id="btn-abate">智能减排寻优</button>
+                <button type="button" class="btn btn-primary" id="btn-export">导出</button>
+              </div>
+              <div class="decompose-toolbar hidden" id="step2-decompose-bar">
+                <div class="indicator-tabs" id="create-indicator-tabs"></div>
+                <button type="button" class="btn btn-primary" id="btn-create-avg">全年平均分配</button>
+              </div>
+              <div class="table-wrap" id="step2-table-wrap">
+                <table class="data-table tree-table" id="target-table"></table>
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard-footer" id="footer-step1">
+            <button type="button" class="btn btn-soft" id="btn-next">下一步</button>
+            <button type="button" class="btn btn-primary btn-lg" id="btn-save-1">保存</button>
+          </div>
+          <div class="wizard-footer hidden" id="footer-step2">
+            <button type="button" class="btn btn-soft" id="btn-prev">上一步</button>
+            <button type="button" class="btn btn-primary btn-lg" id="btn-save-2">保存</button>
+            <button type="button" class="btn btn-primary btn-lg" id="btn-submit">提交审核</button>
+          </div>
+          <div class="wizard-footer hidden" id="footer-update">
+            <button type="button" class="btn btn-soft btn-lg" id="btn-create-history">更新记录查询</button>
+            <button type="button" class="btn btn-primary btn-lg" id="btn-create-change">提交变更</button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="indicator-modal">
+    <div class="modal wide" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h3>指标配置</h3>
+        <button type="button" class="modal-close" id="btn-ind-close">×</button>
+      </div>
+      <div class="modal-body" style="padding:0">
+        <table class="data-table check-table">
+          <thead>
+            <tr>
+              <th style="width:48px"><input type="checkbox" id="ind-check-all" /></th>
+              <th style="width:64px">序号</th>
+              <th>指标名称</th>
+              <th>单位</th>
+              <th>计算逻辑</th>
+            </tr>
+          </thead>
+          <tbody id="indicator-modal-body"></tbody>
+        </table>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" id="btn-ind-cancel">取消</button>
+        <button type="button" class="btn btn-primary" id="btn-ind-ok">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="create-avg-modal">
+    <div class="modal confirm-modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h3>提示</h3>
+        <button type="button" class="modal-close" id="btn-create-avg-close">×</button>
+      </div>
+      <div class="modal-body confirm-body">
+        <div class="confirm-icon">!</div>
+        <p>当前计划已进行数据填写，执行全年平均分解，会覆盖数据，是否继续操作？</p>
+      </div>
+      <div class="modal-footer confirm-footer">
+        <button type="button" class="btn" id="btn-create-avg-cancel">取消</button>
+        <button type="button" class="btn btn-primary" id="btn-create-avg-confirm">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="create-submit-modal">
+    <div class="modal update-submit-modal" role="dialog" aria-modal="true">
+      <div class="modal-header modal-header-muted">
+        <h3>提交更新</h3>
+        <button type="button" class="modal-close" id="btn-create-submit-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="update-reason-field">
+          <label for="create-submit-reason"><span class="req">*</span> 版本更新原因</label>
+          <textarea id="create-submit-reason" rows="5" placeholder="请输入版本更新原因"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer modal-footer-center">
+        <button type="button" class="btn" id="btn-create-submit-cancel">取消</button>
+        <button type="button" class="btn btn-primary" id="btn-create-submit-ok">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="abate-page" id="abate-page">
+    <div class="abate-page-head">
+      <div class="abate-page-title">智能减排寻优</div>
+      <div class="abate-head-actions">
+        <button type="button" class="btn" id="btn-abate-cancel">返回</button>
+        <button type="button" class="btn btn-primary" id="btn-abate-download">下载报告</button>
+      </div>
+    </div>
+    <div class="abate-page-body">
+      <div class="abate-wrap">
+        <div class="abate-ctx" id="abate-ctx"></div>
+        <div class="abate-schemes" id="abate-schemes"></div>
+        <div class="abate-scheme-panel">
+          <div class="abate-scheme-intro" id="abate-scheme-intro"></div>
+          <div class="abate-paths" id="abate-paths"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="create-history-modal">
+    <div class="modal update-history-modal" role="dialog" aria-modal="true">
+      <div class="modal-header modal-header-muted">
+        <h3>更新记录查询</h3>
+        <button type="button" class="modal-close" id="btn-create-history-close">×</button>
+      </div>
+      <div class="modal-body" id="create-history-body"></div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script src="/carbon/js/carbon-biz.js"></script>
+  <script src="/carbon/js/create.js"></script>
+</body>
+</html>

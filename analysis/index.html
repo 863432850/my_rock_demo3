@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>同比分析 · 碳数据分析</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header" id="app-header"></header>
+    <div class="app-body">
+      <aside class="app-sidebar">
+        <nav class="sidebar-menu" id="sidebar-menu"></nav>
+      </aside>
+      <main class="app-main">
+        <div class="breadcrumb" id="breadcrumb"></div>
+        <div class="content-area analysis-page">
+          <div class="analysis-grain" id="analysis-grain">
+            <button type="button" class="analysis-grain-tab active" data-grain="month">月</button>
+            <button type="button" class="analysis-grain-tab" data-grain="quarter">季</button>
+            <button type="button" class="analysis-grain-tab" data-grain="year">年</button>
+            <button type="button" class="analysis-grain-tab" data-grain="ytd">年累计</button>
+          </div>
+
+          <div class="analysis-card analysis-filter">
+            <div class="analysis-filter-row">
+              <label class="analysis-field">
+                <span>行业</span>
+                <select id="an-industry"></select>
+              </label>
+              <label class="analysis-field">
+                <span>行业分类</span>
+                <select id="an-category"></select>
+              </label>
+              <label class="analysis-field">
+                <span>行业子类</span>
+                <select id="an-sub"></select>
+              </label>
+              <label class="analysis-field analysis-field-wide">
+                <span>核算标准</span>
+                <select id="an-standard"></select>
+              </label>
+              <label class="analysis-field analysis-field-wide">
+                <span>指标</span>
+                <select id="an-indicator"></select>
+              </label>
+            </div>
+            <div class="analysis-filter-row">
+              <label class="analysis-field">
+                <span>统计时间</span>
+                <span class="analysis-date-range">
+                  <input type="month" id="an-start" />
+                  <em>至</em>
+                  <input type="month" id="an-end" />
+                </span>
+              </label>
+              <label class="analysis-field analysis-field-grow">
+                <span>组织名称</span>
+                <select id="an-org"></select>
+              </label>
+              <label class="analysis-field">
+                <span>生产层级</span>
+                <select id="an-level"></select>
+              </label>
+              <div class="analysis-filter-actions">
+                <button type="button" class="btn btn-primary" id="btn-an-search">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
+                  查询
+                </button>
+                <button type="button" class="btn" id="btn-an-reset">重置</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="analysis-card analysis-chart-card" id="analysis-chart-card">
+            <div class="analysis-legend">
+              <span class="analysis-legend-item"><i class="is-current"></i>本期</span>
+              <span class="analysis-legend-item"><i class="is-last"></i>同期</span>
+              <span class="analysis-legend-item"><i class="is-yoy"></i>同比增长</span>
+            </div>
+            <div class="analysis-chart" id="analysis-chart"></div>
+          </div>
+
+          <div class="analysis-card analysis-table-card">
+            <div class="analysis-table-toolbar">
+              <label class="analysis-field">
+                <span>企业名称</span>
+                <select id="an-table-org"></select>
+              </label>
+              <div class="analysis-table-actions">
+                <button type="button" class="btn" id="btn-an-threshold">阈值设置</button>
+                <button type="button" class="btn" id="btn-an-push">推送异常</button>
+                <button type="button" class="btn btn-primary" id="btn-an-export">导出</button>
+                <button type="button" class="btn analysis-layout-btn" id="btn-an-layout" title="收起/展开图表">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                    <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="analysis-table-wrap">
+              <table class="data-table analysis-table">
+                <thead>
+                  <tr>
+                    <th>序号</th>
+                    <th>统计时间</th>
+                    <th>组织类型</th>
+                    <th>企业名称</th>
+                    <th>生产层级</th>
+                    <th>生产线</th>
+                    <th>指标</th>
+                    <th>单位</th>
+                    <th>本期</th>
+                    <th>同期</th>
+                    <th>同比(%)</th>
+                  </tr>
+                </thead>
+                <tbody id="analysis-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="an-threshold-modal">
+    <div class="modal verify-threshold-modal" role="dialog" aria-modal="true" aria-labelledby="an-threshold-title">
+      <div class="modal-header">
+        <span id="an-threshold-title">阈值设置</span>
+        <button type="button" class="modal-close" id="btn-an-threshold-close">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="verify-threshold-tip">同比增长超过该阈值时，同比列单元格标红，并在左侧显示感叹号提醒。</p>
+        <div class="verify-threshold-field">
+          <label for="an-threshold-input">同比阈值</label>
+          <div class="verify-threshold-input-wrap">
+            <input id="an-threshold-input" type="number" min="0" max="100" step="0.1" value="5" />
+            <span>%</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" id="btn-an-threshold-cancel">取消</button>
+        <button type="button" class="btn btn-primary" id="btn-an-threshold-ok">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script src="/analysis/js/analysis.js"></script>
+</body>
+</html>

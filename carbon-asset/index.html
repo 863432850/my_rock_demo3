@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>人工登记申请 · 碳资产管理</title>
+  <link rel="stylesheet" href="/css/app.css" />
+  <style>
+    /* ===== 碳资产管理 · 人工登记申请 ===== */
+    .carbon-asset-page {
+      background: #f5f7fb;
+      padding: 0 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* ===== 筛选区（均匀 grid 布局） ===== */
+    .ca-filter {
+      background: #fff;
+      border: 1px solid #eef1f4;
+      border-radius: 4px;
+      padding: 14px 16px 10px;
+    }
+
+    .ca-filter-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px 16px;
+    }
+
+    .ca-filter-grid + .ca-filter-grid {
+      margin-top: 12px;
+    }
+
+    .ca-field {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .ca-field > span {
+      font-size: 13px;
+      color: #606266;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .ca-field select,
+    .ca-field input[type="text"] {
+      height: 30px;
+      border: 1px solid #dcdfe6;
+      border-radius: 3px;
+      padding: 0 8px;
+      font-size: 13px;
+      color: #303133;
+      background: #fff;
+      outline: none;
+      transition: border-color 0.15s;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .ca-field select:focus,
+    .ca-field input[type="text"]:focus {
+      border-color: var(--primary);
+    }
+
+    /* ===== 日期范围选择器 ===== */
+    .ca-date-picker {
+      position: relative;
+      display: flex;
+      align-items: center;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .ca-date-input {
+      height: 30px;
+      border: 1px solid #dcdfe6;
+      border-radius: 3px;
+      padding: 0 28px 0 8px;
+      font-size: 13px;
+      color: #303133;
+      background: #fff;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.15s;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .ca-date-input:focus,
+    .ca-date-picker.is-open .ca-date-input {
+      border-color: var(--primary);
+    }
+
+    .ca-date-input::placeholder {
+      color: #c0c4cc;
+    }
+
+    .ca-date-icon {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #c0c4cc;
+      pointer-events: none;
+    }
+
+    .ca-date-icon svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* 日历下拉 */
+    .ca-cal-dropdown {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      z-index: 1000;
+      background: #fff;
+      border: 1px solid #e4e7ed;
+      border-radius: 6px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+      padding: 12px;
+      display: none;
+      white-space: normal;
+    }
+
+    .ca-cal-dropdown.show {
+      display: block;
+    }
+
+    .ca-cal-header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #f0f0f0;
+      margin-bottom: 10px;
+    }
+
+    .ca-cal-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #303133;
+      min-width: 120px;
+      text-align: center;
+    }
+
+    .ca-cal-nav {
+      width: 28px;
+      height: 28px;
+      border: 1px solid #dcdfe6;
+      border-radius: 4px;
+      background: #fff;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #606266;
+      transition: all 0.15s;
+    }
+
+    .ca-cal-nav:hover {
+      color: var(--primary);
+      border-color: var(--primary);
+    }
+
+    .ca-cal-nav svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .ca-cal-body {
+      display: flex;
+      gap: 16px;
+    }
+
+    .ca-cal-panel {
+      width: 220px;
+    }
+
+    .ca-cal-weekdays {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 2px;
+      margin-bottom: 4px;
+    }
+
+    .ca-cal-weekdays span {
+      text-align: center;
+      font-size: 12px;
+      color: #909399;
+      padding: 4px 0;
+    }
+
+    .ca-cal-days {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 2px;
+    }
+
+    .ca-cal-day {
+      text-align: center;
+      padding: 5px 0;
+      font-size: 13px;
+      color: #303133;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.15s;
+    }
+
+    .ca-cal-day:hover:not(.empty) {
+      background: #f0f9eb;
+      color: var(--primary);
+    }
+
+    .ca-cal-day.empty {
+      cursor: default;
+    }
+
+    .ca-cal-day.today {
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .ca-cal-day.in-range {
+      background: #f0f9eb;
+      border-radius: 0;
+    }
+
+    .ca-cal-day.range-start,
+    .ca-cal-day.range-end {
+      background: var(--primary);
+      color: #fff;
+      border-radius: 4px;
+    }
+
+    .ca-cal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #f0f0f0;
+    }
+
+    .ca-cal-footer .btn {
+      height: 28px;
+      padding: 0 12px;
+      font-size: 12px;
+    }
+
+    /* 筛选按钮行 */
+    .ca-filter-btns {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px 16px;
+      margin-top: 12px;
+    }
+
+    .ca-filter-btn-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      grid-column: 3 / 6;
+    }
+
+    .ca-filter-btn-wrap .btn {
+      height: 30px;
+      padding: 0 16px;
+      font-size: 13px;
+    }
+
+    .ca-btn-primary {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
+    .ca-btn-primary:hover {
+      background: var(--primary-dark);
+    }
+
+    /* ===== 表格区 ===== */
+    .ca-table-card {
+      background: #fff;
+      border: 1px solid #eef1f4;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .ca-table-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 10px 16px;
+      gap: 8px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .ca-table-toolbar .btn {
+      height: 30px;
+      padding: 0 14px;
+      font-size: 13px;
+    }
+
+    .ca-table-wrap {
+      overflow-x: auto;
+    }
+
+    .ca-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      min-width: 1480px;
+    }
+
+    .ca-table thead th {
+      background: #e8f5e9;
+      color: #303133;
+      font-weight: 600;
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid #eef1f4;
+      white-space: nowrap;
+    }
+
+    .ca-table tbody td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #f0f0f0;
+      color: #303133;
+      vertical-align: middle;
+    }
+
+    .ca-table tbody tr:hover {
+      background: #f7fbf8;
+    }
+
+    .ca-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .ca-table .op-btn {
+      display: inline-block;
+      padding: 0;
+      font-size: 13px;
+      border: none;
+      background: transparent;
+      color: var(--primary);
+      cursor: pointer;
+      margin-right: 12px;
+      transition: opacity 0.15s;
+    }
+
+    .ca-table .op-btn:hover {
+      opacity: 0.7;
+    }
+
+    .ca-table .op-btn:last-child {
+      margin-right: 0;
+    }
+
+    .ca-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: #fa8c16;
+    }
+
+    .ca-status .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #fa8c16;
+    }
+
+    /* 分页 */
+    .ca-pagination {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 12px 16px;
+      gap: 8px;
+      font-size: 13px;
+      color: #606266;
+    }
+
+    .ca-pagination select {
+      height: 28px;
+      border: 1px solid #dcdfe6;
+      border-radius: 3px;
+      padding: 0 6px;
+      font-size: 13px;
+      color: #303133;
+      background: #fff;
+    }
+
+    .ca-pagination .page-btn {
+      width: 28px;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #dcdfe6;
+      border-radius: 3px;
+      background: #fff;
+      color: #606266;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .ca-pagination .page-btn.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
+    .ca-pagination .page-btn.disabled {
+      color: #c0c4cc;
+      cursor: not-allowed;
+    }
+
+    .ca-pagination .page-info {
+      margin-left: 4px;
+    }
+
+    .ca-pagination .page-info input {
+      width: 40px;
+      height: 28px;
+      text-align: center;
+      border: 1px solid #dcdfe6;
+      border-radius: 3px;
+      font-size: 13px;
+      margin: 0 4px;
+    }
+
+    .ca-empty {
+      text-align: center;
+      padding: 40px 0;
+      color: #909399;
+      font-size: 14px;
+    }
+
+    /* ===== 发起申请（全屏） ===== */
+    .ca-apply-modal {
+      position: fixed;
+      inset: 0;
+      background: #fff;
+      z-index: 1000;
+      display: none;
+      flex-direction: column;
+    }
+
+    .ca-apply-modal.show {
+      display: flex;
+    }
+
+    .ca-apply-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 24px;
+      border-bottom: 1px solid #f0f0f0;
+      background: #fff;
+      flex-shrink: 0;
+    }
+
+    .ca-apply-back {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #606266;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 15px;
+      padding: 0;
+    }
+
+    .ca-apply-back:hover {
+      color: var(--primary);
+    }
+
+    .ca-apply-back svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .ca-apply-header-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #303133;
+    }
+
+    .ca-apply-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 32px;
+    }
+
+    .ca-apply-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 20px 24px;
+    }
+
+    .ca-apply-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .ca-apply-field > span {
+      font-size: 13px;
+      color: #606266;
+    }
+
+    .ca-apply-field > span .req {
+      color: #f5222d;
+      margin-right: 2px;
+    }
+
+    .ca-apply-field select,
+    .ca-apply-field input[type="text"],
+    .ca-apply-field input[type="date"] {
+      height: 32px;
+      border: 1px solid #dcdfe6;
+      border-radius: 3px;
+      padding: 0 8px;
+      font-size: 13px;
+      color: #303133;
+      background: #fff;
+      outline: none;
+      transition: border-color 0.15s;
+      width: 100%;
+    }
+
+    .ca-apply-field select:focus,
+    .ca-apply-field input[type="text"]:focus,
+    .ca-apply-field input[type="date"]:focus {
+      border-color: var(--primary);
+    }
+
+    .ca-apply-field input.placeholder-red::placeholder {
+      color: #f5222d;
+    }
+
+    .ca-apply-count-field {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .ca-apply-count-field input {
+      flex: 1;
+      text-align: center;
+      min-width: 0;
+    }
+
+    .ca-apply-count-field button {
+      width: 30px;
+      height: 30px;
+      border: 1px solid #dcdfe6;
+      border-radius: 3px;
+      background: #f5f7fa;
+      color: #606266;
+      cursor: pointer;
+      font-size: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .ca-apply-count-field button:hover {
+      color: var(--primary);
+      border-color: var(--primary);
+    }
+
+    /* 附件 */
+    .ca-attach-row {
+      margin-top: 24px;
+    }
+
+    .ca-attach-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .ca-attach-field > span {
+      font-size: 13px;
+      color: #606266;
+    }
+
+    .ca-attach-field > span .req {
+      color: #f5222d;
+      margin-right: 2px;
+    }
+
+    .ca-attach-field .btn-link {
+      background: none;
+      border: none;
+      color: var(--primary);
+      cursor: pointer;
+      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0;
+      justify-content: flex-start;
+    }
+
+    .ca-attach-field .btn-link svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .ca-apply-footer {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 16px 24px;
+      border-top: 1px solid #f0f0f0;
+      background: #fff;
+      flex-shrink: 0;
+    }
+
+    .ca-apply-footer .btn {
+      height: 36px;
+      padding: 0 24px;
+      font-size: 14px;
+    }
+
+    .ca-apply-footer .btn-primary {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
+    .ca-apply-footer .btn-primary:hover {
+      background: var(--primary-dark);
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header" id="app-header"></header>
+    <div class="app-body">
+      <aside class="app-sidebar">
+        <nav class="sidebar-menu" id="sidebar-menu"></nav>
+      </aside>
+      <main class="app-main">
+        <div class="breadcrumb" id="breadcrumb"></div>
+        <div class="content-area carbon-asset-page">
+
+          <!-- 筛选区 -->
+          <div class="ca-filter">
+            <div class="ca-filter-grid">
+              <label class="ca-field">
+                <span>企业类别</span>
+                <select id="ca-enterprise-category">
+                  <option value="">请选择</option>
+                  <option value="非重点排放单位/其他">非重点排放单位/其他</option>
+                </select>
+              </label>
+              <label class="ca-field">
+                <span>行业</span>
+                <select id="ca-industry">
+                  <option value="">请选择</option>
+                  <option value="建材">建材</option>
+                </select>
+              </label>
+              <label class="ca-field">
+                <span>碳市场</span>
+                <select id="ca-market">
+                  <option value="">请选择</option>
+                  <option value="全国碳市场">全国碳市场</option>
+                </select>
+              </label>
+              <label class="ca-field">
+                <span>资产来源</span>
+                <select id="ca-source">
+                  <option value="">请选择</option>
+                  <option value="免费发放-预分配">免费发放-预分配</option>
+                </select>
+              </label>
+              <label class="ca-field">
+                <span>履约周期</span>
+                <select id="ca-cycle">
+                  <option value="">请选择</option>
+                  <option value="第一个履约周期21-22">第一个履约周期21-22</option>
+                  <option value="第二个履约周期21-22">第二个履约周期21-22</option>
+                </select>
+              </label>
+            </div>
+            <div class="ca-filter-grid">
+              <label class="ca-field">
+                <span>履约执行年份</span>
+                <select id="ca-exec-year">
+                  <option value="">请选择</option>
+                  <option value="2025">2025</option>
+                  <option value="2026">2026</option>
+                </select>
+              </label>
+              <label class="ca-field">
+                <span>资产类型</span>
+                <select id="ca-asset-type">
+                  <option value="">请选择</option>
+                  <option value="配额">配额</option>
+                </select>
+              </label>
+              <label class="ca-field">
+                <span>产品名称</span>
+                <select id="ca-product">
+                  <option value="">请选择</option>
+                  <option value="碳排放配额21">碳排放配额21</option>
+                </select>
+              </label>
+              <label class="ca-field">
+                <span>发放/登记时间</span>
+                <div class="ca-date-picker" id="ca-issue-picker">
+                  <input type="text" class="ca-date-input" id="ca-issue-range" placeholder="请选择" readonly />
+                  <span class="ca-date-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                  </span>
+                  <div class="ca-cal-dropdown" id="ca-issue-cal"></div>
+                </div>
+              </label>
+              <label class="ca-field">
+                <span>申请时间</span>
+                <div class="ca-date-picker" id="ca-apply-picker">
+                  <input type="text" class="ca-date-input" id="ca-apply-range" placeholder="请选择" readonly />
+                  <span class="ca-date-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                  </span>
+                  <div class="ca-cal-dropdown" id="ca-apply-cal"></div>
+                </div>
+              </label>
+            </div>
+            <div class="ca-filter-btns">
+              <div class="ca-filter-btn-wrap">
+                <button type="button" class="btn ca-btn-primary" id="btn-ca-search">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
+                  查询
+                </button>
+                <button type="button" class="btn" id="btn-ca-reset">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+                  重置
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 表格区 -->
+          <div class="ca-table-card">
+            <div class="ca-table-toolbar">
+              <button type="button" class="btn ca-btn-primary" id="btn-ca-apply">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M12 5v14M5 12h14"/></svg>
+                发起申请
+              </button>
+            </div>
+            <div class="ca-table-wrap">
+              <table class="ca-table">
+                <thead>
+                  <tr>
+                    <th style="width:50px;">序号</th>
+                    <th>企业类别</th>
+                    <th>行业</th>
+                    <th>碳市场</th>
+                    <th>资产来源</th>
+                    <th>履约执行年份</th>
+                    <th>履约周期</th>
+                    <th>资产类型</th>
+                    <th>产品名称</th>
+                    <th>配额申报量(吨)</th>
+                    <th>发放/登记量(吨)</th>
+                    <th>应缴配额量(吨)</th>
+                    <th>发放/登记日期</th>
+                    <th>申请人</th>
+                    <th>联系方式</th>
+                    <th>申请时间</th>
+                    <th>状态</th>
+                    <th style="width:140px;">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="ca-table-body"></tbody>
+              </table>
+            </div>
+            <div class="ca-pagination" id="ca-pagination"></div>
+          </div>
+
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- 发起申请（全屏） -->
+  <div class="ca-apply-modal" id="ca-apply-modal">
+    <div class="ca-apply-header">
+      <button type="button" class="ca-apply-back" id="ca-apply-back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        返回
+      </button>
+      <span class="ca-apply-header-title">登记申请信息</span>
+    </div>
+    <div class="ca-apply-body">
+      <div class="ca-apply-grid">
+        <label class="ca-apply-field">
+          <span><i class="req">*</i>行业</span>
+          <select id="apply-industry">
+            <option value="建材" selected>建材</option>
+          </select>
+        </label>
+        <label class="ca-apply-field">
+          <span><i class="req">*</i>碳市场</span>
+          <select id="apply-market">
+            <option value="全国碳市场" selected>全国碳市场</option>
+          </select>
+        </label>
+        <label class="ca-apply-field">
+          <span><i class="req">*</i>产品名称</span>
+          <select id="apply-product">
+            <option value="碳排放配额21" selected>碳排放配额21</option>
+          </select>
+        </label>
+        <label class="ca-apply-field">
+          <span><i class="req">*</i>资产类型</span>
+          <select id="apply-asset-type">
+            <option value="配额" selected>配额</option>
+          </select>
+        </label>
+
+        <label class="ca-apply-field">
+          <span><i class="req">*</i>资产来源</span>
+          <select id="apply-source">
+            <option value="免费发放-预分配" selected>免费发放-预分配</option>
+          </select>
+        </label>
+        <label class="ca-apply-field">
+          <span><i class="req">*</i>履约周期</span>
+          <select id="apply-cycle">
+            <option value="第二个履约周期21-22" selected>第二个履约周期21-22</option>
+            <option value="第一个履约周期21-22">第一个履约周期21-22</option>
+          </select>
+        </label>
+        <label class="ca-apply-field">
+          <span><i class="req">*</i>履约执行年份</span>
+          <input type="text" id="apply-exec-year" placeholder="请选择履约执行年份" class="placeholder-red" />
+        </label>
+        <label class="ca-apply-field">
+          <span><i class="req">*</i>配额申报量（吨）</span>
+          <div class="ca-apply-count-field">
+            <button type="button" data-step="decrement" data-target="apply-declared">-</button>
+            <input type="text" id="apply-declared" value="1" />
+            <button type="button" data-step="increment" data-target="apply-declared">+</button>
+          </div>
+        </label>
+
+        <label class="ca-apply-field">
+          <span><i class="req">*</i>发放/登记量（吨）</span>
+          <div class="ca-apply-count-field">
+            <button type="button" data-step="decrement" data-target="apply-count">-</button>
+            <input type="text" id="apply-count" value="1" />
+            <button type="button" data-step="increment" data-target="apply-count">+</button>
+          </div>
+        </label>
+        <label class="ca-apply-field">
+          <span><i class="req">*</i>发放/登记日期</span>
+          <input type="date" id="apply-issue-date" />
+        </label>
+        <label class="ca-apply-field">
+          <span><i class="req">*</i>申请人</span>
+          <input type="text" id="apply-applicant" value="绿色推进部" />
+        </label>
+        <label class="ca-apply-field">
+          <span><i class="req">*</i>联系方式</span>
+          <input type="text" id="apply-phone" value="18032500660" />
+        </label>
+      </div>
+
+      <div class="ca-attach-row">
+        <div class="ca-attach-field">
+          <span><i class="req">*</i>附件</span>
+          <button type="button" class="btn-link" id="apply-attach">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            添加文件
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="ca-apply-footer">
+      <button type="button" class="btn" id="btn-apply-save">保存</button>
+      <button type="button" class="btn ca-btn-primary" id="btn-apply-submit">发起申请</button>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script src="/carbon-asset/js/carbon-asset.js"></script>
+</body>
+</html>

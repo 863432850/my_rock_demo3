@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>月度数据填报 · 碳排放管理</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body class="emission-page">
+  <div class="app-shell">
+    <header class="app-header" id="app-header"></header>
+    <div class="app-body">
+      <aside class="app-sidebar">
+        <nav class="sidebar-menu" id="sidebar-menu"></nav>
+      </aside>
+      <main class="app-main emission-main">
+        <div class="content-area emission-fill">
+          <div class="emission-fill-head">
+            <button type="button" class="emission-back" id="btn-emission-back" title="返回">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <div class="emission-fill-title" id="emission-fill-title">【发电】-2026年5月月度报告填报</div>
+          </div>
+
+          <div class="emission-tabs-bar">
+            <div class="emission-sheet-tabs" id="emission-sheet-tabs"></div>
+            <button type="button" class="emission-tab-more" id="btn-tab-more" title="更多页签">›</button>
+            <div class="emission-tabs-right">
+              <span class="emission-version">版本 <em>V3.0</em></span>
+              <button type="button" class="btn btn-primary" id="btn-emission-update">更新</button>
+              <button type="button" class="btn btn-primary" id="btn-emission-calc">一键计算</button>
+            </div>
+          </div>
+
+          <div class="emission-fill-body">
+            <div class="emission-sheet-card" id="emission-sheet-panel">
+              <div class="emission-section-title">
+                <span class="emission-section-bar"></span>
+                默认填报项
+              </div>
+              <div class="emission-table-wrap">
+                <table class="emission-data-table" id="emission-table">
+                  <thead>
+                    <tr>
+                      <th>生产线</th>
+                      <th>排放源</th>
+                      <th>物料名称</th>
+                      <th>参数名称</th>
+                      <th>取值方式</th>
+                      <th>数值</th>
+                      <th>采集数据</th>
+                      <th>单位</th>
+                      <th>数据来源</th>
+                      <th>支撑材料</th>
+                    </tr>
+                  </thead>
+                  <tbody id="emission-table-body"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="emission-tab-placeholder hidden" id="emission-tab-placeholder">
+              <div class="emission-tab-placeholder-title">页签演示占位</div>
+              <p>当前仅完整复刻「化石燃料燃烧排放」页签，其余页签后续补充。</p>
+            </div>
+          </div>
+
+          <div class="emission-fill-footer">
+            <button type="button" class="btn btn-primary" id="btn-emission-save">保存</button>
+            <button type="button" class="btn btn-primary" id="btn-emission-next">下一步</button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="emission-attach-modal">
+    <div class="modal emission-attach-modal" role="dialog" aria-modal="true" aria-labelledby="emission-attach-title">
+      <div class="modal-header">
+        <h3 id="emission-attach-title">添加支撑材料</h3>
+        <button type="button" class="modal-close" id="btn-attach-close">×</button>
+      </div>
+      <div class="modal-body emission-attach-body">
+        <p class="emission-attach-desc">为当前参数行选择本地文件，或从远程终端日统计记录中勾选。</p>
+        <div class="emission-attach-source" id="emission-attach-source">
+          <button type="button" class="emission-source-btn active" data-source="local">本地电脑</button>
+          <button type="button" class="emission-source-btn" data-source="remote">远程终端</button>
+        </div>
+
+        <div class="emission-attach-pane" id="attach-pane-local">
+          <label class="emission-upload-zone" id="emission-upload-zone">
+            <input type="file" id="emission-local-files" multiple hidden
+              accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.md,.txt,.zip" />
+            <div class="emission-upload-title">点击选择本地文件</div>
+            <div class="emission-upload-hint">支持图片、PDF、Word、Excel、md 等，可多选</div>
+          </label>
+          <div class="emission-local-list" id="emission-local-list"></div>
+        </div>
+
+        <div class="emission-attach-pane hidden" id="attach-pane-remote">
+          <div class="emission-terminal-cards" id="emission-terminal-cards"></div>
+          <div class="emission-remote-filters">
+            <label class="emission-filter-item">
+              <span>统计日期</span>
+              <span class="emission-date-range">
+                <input type="date" id="emission-remote-date-start" />
+                <em>至</em>
+                <input type="date" id="emission-remote-date-end" />
+              </span>
+            </label>
+            <label class="emission-filter-item emission-filter-grow">
+              <span>搜索</span>
+              <input type="text" id="emission-remote-keyword" placeholder="终端 / 安装位置" />
+            </label>
+          </div>
+          <div class="emission-remote-table-wrap">
+            <table class="emission-remote-table">
+              <thead>
+                <tr>
+                  <th style="width:40px"></th>
+                  <th>记录时间</th>
+                  <th>终端名称</th>
+                  <th>安装位置</th>
+                  <th>状态</th>
+                </tr>
+              </thead>
+              <tbody id="emission-remote-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer emission-attach-footer">
+        <div class="emission-attach-count" id="emission-attach-count">已选 0 项</div>
+        <div class="emission-attach-actions">
+          <button type="button" class="btn" id="btn-attach-cancel">取消</button>
+          <button type="button" class="btn btn-primary" id="btn-attach-confirm">确认添加</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay emission-preview-overlay" id="emission-preview-modal">
+    <div class="emission-preview-panel" role="dialog" aria-modal="true" aria-labelledby="emission-preview-filename">
+      <div class="emission-preview-header">
+        <div class="emission-preview-filename" id="emission-preview-filename">文件预览</div>
+        <button type="button" class="emission-preview-close" id="btn-preview-close" title="关闭">×</button>
+      </div>
+      <div class="emission-preview-toolbar">
+        <button type="button" class="emission-preview-tool" id="btn-preview-prev" title="上一页">‹</button>
+        <span class="emission-preview-page" id="emission-preview-page">1 / 1</span>
+        <button type="button" class="emission-preview-tool" id="btn-preview-next" title="下一页">›</button>
+        <span class="emission-preview-sep"></span>
+        <button type="button" class="emission-preview-tool" id="btn-preview-zoom-out" title="缩小">−</button>
+        <button type="button" class="emission-preview-tool" id="btn-preview-zoom-in" title="放大">+</button>
+        <button type="button" class="emission-preview-tool emission-preview-fit" id="btn-preview-fit">自适应宽度</button>
+      </div>
+      <div class="emission-preview-body" id="emission-preview-body"></div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script src="/emission/js/emission.js"></script>
+</body>
+</html>
