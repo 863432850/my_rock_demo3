@@ -12,8 +12,8 @@ function docsSidebarGroup(moduleId) {
     id: 'docs',
     name: '流程&需求说明',
     items: [
-      { id: 'flowchart', name: '整体流程图', href: '/flowchart.html?module=' + moduleId },
-      { id: 'requirements', name: '需求说明/注意事项', href: '/requirements.html?module=' + moduleId },
+      { id: 'flowchart', name: '整体流程图', href: 'flowchart.html?module=' + moduleId },
+      { id: 'requirements', name: '需求说明/注意事项', href: 'requirements.html?module=' + moduleId },
     ],
   };
 }
@@ -23,14 +23,14 @@ const MODULES = [
   {
     id: 'verify',
     name: '核查管理',
-    home: '/index.html',
+    home: 'index.html',
     getSidebar: function () {
       return [
         {
           id: 'biz',
           name: '业务界面',
           items: [
-            { id: 'verify-fill', name: '核查数据管理', href: '/index.html' },
+            { id: 'verify-fill', name: '核查数据管理', href: 'index.html' },
           ],
         },
         docsSidebarGroup('verify'),
@@ -40,14 +40,14 @@ const MODULES = [
   {
     id: 'carbon',
     name: '碳目标管理',
-    home: '/carbon/index.html',
+    home: 'carbon/index.html',
     getSidebar: function () {
       return [
         {
           id: 'biz',
           name: '业务界面',
           items: [
-            { id: 'create', name: '碳目标制定', href: '/carbon/index.html' },
+            { id: 'create', name: '碳目标制定', href: 'carbon/index.html' },
           ],
         },
         docsSidebarGroup('carbon'),
@@ -57,14 +57,14 @@ const MODULES = [
   {
     id: 'emission',
     name: '碳排放管理',
-    home: '/emission/index.html',
+    home: 'emission/index.html',
     getSidebar: function () {
       return [
         {
           id: 'biz',
           name: '业务界面',
           items: [
-            { id: 'monthly-fill', name: '月度数据填报-填报', href: '/emission/index.html' },
+            { id: 'monthly-fill', name: '月度数据填报-填报', href: 'emission/index.html' },
           ],
         },
         docsSidebarGroup('emission'),
@@ -74,15 +74,15 @@ const MODULES = [
   {
     id: 'analysis',
     name: '碳数据分析',
-    home: '/analysis/index.html',
+    home: 'analysis/index.html',
     getSidebar: function () {
       return [
         {
           id: 'biz',
           name: '业务界面',
           items: [
-            { id: 'yoy', name: '同比分析', href: '/analysis/index.html' },
-            { id: 'mom', name: '环比分析', href: '/analysis/mom.html' },
+            { id: 'yoy', name: '同比分析', href: 'analysis/index.html' },
+            { id: 'mom', name: '环比分析', href: 'analysis/mom.html' },
           ],
         },
         docsSidebarGroup('analysis'),
@@ -92,20 +92,20 @@ const MODULES = [
   {
     id: 'carbon-asset',
     name: '碳资产管理',
-    home: '/carbon-asset/index.html',
+    home: 'carbon-asset/index.html',
     getSidebar: function () {
       return [
         {
           id: 'biz',
           name: '业务界面',
           items: [
-            { id: 'manual-register', name: '人工登记申请', href: '/carbon-asset/index.html' },
-            { id: 'fulfillment', name: '履约申请', href: '/carbon-asset/fulfillment.html' },
-            { id: 'freeze', name: '碳资产冻结管理', href: '/carbon-asset/freeze.html' },
+            { id: 'manual-register', name: '人工登记申请', href: 'carbon-asset/index.html' },
+            { id: 'fulfillment', name: '履约申请', href: 'carbon-asset/fulfillment.html' },
+            { id: 'freeze', name: '碳资产冻结管理', href: 'carbon-asset/freeze.html' },
             // 分析类界面暂未启用（文件保留在 carbon-asset/ 下，需要时取消注释即可）
-            // { id: 'analysis-register', name: '碳资产登记分析', href: '/carbon-asset/analysis-register.html' },
-            // { id: 'analysis-trade', name: '碳资产交易分析', href: '/carbon-asset/analysis-trade.html' },
-            // { id: 'analysis-performance', name: '碳履约分析', href: '/carbon-asset/analysis-performance.html' },
+            // { id: 'analysis-register', name: '碳资产登记分析', href: 'carbon-asset/analysis-register.html' },
+            // { id: 'analysis-trade', name: '碳资产交易分析', href: 'carbon-asset/analysis-trade.html' },
+            // { id: 'analysis-performance', name: '碳履约分析', href: 'carbon-asset/analysis-performance.html' },
           ],
         },
         docsSidebarGroup('carbon-asset'),
@@ -115,14 +115,14 @@ const MODULES = [
   {
     id: 'system',
     name: '系统管理',
-    home: '/system/index.html',
+    home: 'system/index.html',
     getSidebar: function () {
       return [
         {
           id: 'biz',
           name: '业务界面',
           items: [
-            { id: 'done-events', name: '已办事件', href: '/system/index.html' },
+            { id: 'done-events', name: '已办事件', href: 'system/index.html' },
           ],
         },
         docsSidebarGroup('system'),
@@ -245,7 +245,7 @@ function withDocsSidebar(moduleId, groups) {
 function loadModuleDocDefaults(thenSrc) {
   var id = getDocModuleId();
   var s = document.createElement('script');
-  s.src = '/js/docs/' + encodeURIComponent(id) + '/doc-defaults.js';
+  s.src = 'js/docs/' + encodeURIComponent(id) + '/doc-defaults.js';
   function next() {
     var page = document.createElement('script');
     page.src = thenSrc;
