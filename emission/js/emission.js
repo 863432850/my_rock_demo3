@@ -18,23 +18,18 @@ var TERMINAL_TYPES = [
   { id: 'infrared', name: '红外电表', desc: '红外通信直读日结数据' },
 ];
 
-/** 远程终端日统计演示数据 */
+/** 远程终端日统计演示数据（2026年9月；高拍仪保留前两条，OCR/红外保留原第2、3条） */
 var REMOTE_RECORDS = [
-  { id: 'sc-0501-1', terminalId: 'scanner', date: '2026-05-01', time: '09:12', device: '高拍仪#A1', location: '发电车间资料室', online: true },
-  { id: 'sc-0501-2', terminalId: 'scanner', date: '2026-05-01', time: '14:36', device: '高拍仪#A1', location: '化验室', online: true },
-  { id: 'sc-0502-1', terminalId: 'scanner', date: '2026-05-02', time: '10:05', device: '高拍仪#A2', location: '发电车间资料室', online: true },
-  { id: 'ocr-0501-1', terminalId: 'ocr', date: '2026-05-01', time: '08:20', device: 'OCR电表#12', location: '1#锅炉房', online: true },
-  { id: 'ocr-0502-1', terminalId: 'ocr', date: '2026-05-02', time: '08:18', device: 'OCR电表#12', location: '1#锅炉房', online: true },
-  { id: 'ocr-0502-2', terminalId: 'ocr', date: '2026-05-02', time: '08:22', device: 'OCR电表#15', location: '2#锅炉房', online: true },
-  { id: 'ocr-0503-1', terminalId: 'ocr', date: '2026-05-03', time: '08:15', device: 'OCR电表#12', location: '1#锅炉房', online: true },
-  { id: 'ir-0501-1', terminalId: 'infrared', date: '2026-05-01', time: '08:12', device: '红外电表#3', location: '汽机厂房', online: true },
-  { id: 'ir-0502-1', terminalId: 'infrared', date: '2026-05-02', time: '08:12', device: '红外电表#3', location: '汽机厂房', online: true },
-  { id: 'ir-0502-2', terminalId: 'infrared', date: '2026-05-02', time: '08:15', device: '红外电表#3', location: '汽机厂房', online: true },
-  { id: 'ir-0503-1', terminalId: 'infrared', date: '2026-05-03', time: '08:10', device: '红外电表#5', location: '循环水泵房', online: true },
+  { id: 'sc-0901-1', terminalId: 'scanner', date: '2026-09-01', time: '09:12', device: '高拍仪#A1', location: '发电车间资料室', online: true },
+  { id: 'sc-0901-2', terminalId: 'scanner', date: '2026-09-01', time: '14:36', device: '高拍仪#A1', location: '化验室', online: true },
+  { id: 'ocr-0902-1', terminalId: 'ocr', date: '2026-09-02', time: '08:18', device: 'OCR电表#12', location: '1#锅炉房', online: true },
+  { id: 'ocr-0902-2', terminalId: 'ocr', date: '2026-09-02', time: '08:22', device: 'OCR电表#15', location: '2#锅炉房', online: true },
+  { id: 'ir-0902-1', terminalId: 'infrared', date: '2026-09-02', time: '08:12', device: '红外电表#3', location: '汽机厂房', online: true },
+  { id: 'ir-0902-2', terminalId: 'infrared', date: '2026-09-02', time: '08:15', device: '红外电表#3', location: '汽机厂房', online: true },
 ];
 
-var REMOTE_DATE_MIN = '2026-05-01';
-var REMOTE_DATE_MAX = '2026-05-31';
+var REMOTE_DATE_MIN = '2026-09-01';
+var REMOTE_DATE_MAX = '2026-09-30';
 
 /** 演示数据：对齐截图中的天然气组 + 下一物料起始两行 */
 var FOSSIL_DEMO = {
@@ -111,10 +106,15 @@ function snapshotRemote(rec) {
   };
 }
 
-function shortDateLabel(dateStr) {
-  var parts = String(dateStr || '').split('-');
-  if (parts.length < 3) return dateStr;
-  return parts[1] + '-' + parts[2] + '日结';
+/** 列表「记录时间」：高拍仪显示具体时间；OCR/红外电表显示整月范围（如 2026年9月） */
+function remoteTimeLabel(rec) {
+  if (!rec) return '-';
+  if (rec.terminalId === 'scanner') {
+    return String(rec.date || '').slice(5) + ' ' + (rec.time || '');
+  }
+  var parts = String(rec.date || '').split('-');
+  if (parts.length < 2) return rec.date || '-';
+  return parts[0] + '年' + Number(parts[1]) + '月';
 }
 
 function detectPreviewKind(name, mime) {
@@ -229,7 +229,7 @@ function initEmissionFillPage() {
       + '<tr><th>终端名称</th><td>' + escapeHtml(rec.device || '-') + '</td></tr>'
       + '<tr><th>安装位置</th><td>' + escapeHtml(rec.location || '-') + '</td></tr>'
       + '<tr><th>统计日期</th><td>' + escapeHtml(rec.date || '-') + '</td></tr>'
-      + '<tr><th>记录时间</th><td>' + escapeHtml((rec.date || '').slice(5) + ' ' + (rec.time || '')) + '</td></tr>'
+      + '<tr><th>记录时间</th><td>' + escapeHtml(remoteTimeLabel(rec)) + '</td></tr>'
       + '<tr><th>终端状态</th><td>在线</td></tr>'
       + '</table>'
       + '<p class="emission-preview-doc-note">演示预览：远程终端日统计记录详情页，正式环境可对接原始影像或抄表报文。</p>'
@@ -401,6 +401,8 @@ function initEmissionFillPage() {
     });
     document.getElementById('attach-pane-local').classList.toggle('hidden', source !== 'local');
     document.getElementById('attach-pane-remote').classList.toggle('hidden', source !== 'remote');
+    // 远程终端：改为逐条「获取数据」，不再提供确认添加按钮
+    document.getElementById('btn-attach-confirm').classList.toggle('hidden', source === 'remote');
     updateAttachCount();
   }
 
@@ -470,14 +472,12 @@ function initEmissionFillPage() {
       return;
     }
     body.innerHTML = list.map(function (r) {
-      var checked = !!attachState.selectedRemoteIds[r.id];
       return '<tr>'
-        + '<td><input type="checkbox" class="emission-remote-check" data-id="' + escapeHtml(r.id) + '"'
-        + (checked ? ' checked' : '') + ' /></td>'
-        + '<td>' + escapeHtml(r.date.slice(5) + ' ' + r.time) + '</td>'
         + '<td>' + escapeHtml(r.device) + '</td>'
         + '<td>' + escapeHtml(r.location || '-') + '</td>'
         + '<td><span class="emission-remote-status is-online"><i></i>在线</span></td>'
+        + '<td>' + escapeHtml(remoteTimeLabel(r)) + '</td>'
+        + '<td><button type="button" class="emission-remote-fetch" data-id="' + escapeHtml(r.id) + '">获取数据</button></td>'
         + '</tr>';
     }).join('');
   }
@@ -542,14 +542,7 @@ function initEmissionFillPage() {
       if (!attachState.selectedRemoteIds[rid] || exist[rid]) return;
       var rec = REMOTE_RECORDS.find(function (r) { return r.id === rid; });
       if (!rec) return;
-      var label;
-      if (rec.terminalId === 'scanner') {
-        label = '高拍仪 · ' + shortDateLabel(rec.date);
-      } else if (rec.terminalId === 'ocr') {
-        label = 'OCR电表 · ' + rec.device;
-      } else {
-        label = '红外电表 · ' + shortDateLabel(rec.date);
-      }
+      var label = terminalName(rec.terminalId) + ' · ' + remoteTimeLabel(rec);
       // 同标签多条时带时间区分
       if (row.attachments.some(function (a) { return a.label === label; })) {
         label = label + ' ' + rec.time;
@@ -702,13 +695,14 @@ function initEmissionFillPage() {
     renderRemoteBody();
   });
 
-  document.getElementById('emission-remote-body').addEventListener('change', function (e) {
-    var box = e.target.closest('.emission-remote-check');
-    if (!box) return;
-    var id = box.getAttribute('data-id');
-    if (box.checked) attachState.selectedRemoteIds[id] = true;
-    else delete attachState.selectedRemoteIds[id];
-    updateAttachCount();
+  document.getElementById('emission-remote-body').addEventListener('click', function (e) {
+    var btn = e.target.closest('.emission-remote-fetch');
+    if (!btn) return;
+    var id = btn.getAttribute('data-id');
+    // 获取数据：选中该条记录并走确认流程（添加到支撑材料列表 + 关闭弹窗）
+    attachState.selectedRemoteIds = {};
+    attachState.selectedRemoteIds[id] = true;
+    confirmAttach();
   });
 
   document.getElementById('btn-attach-close').addEventListener('click', closeAttachModal);
