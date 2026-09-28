@@ -2909,7 +2909,8 @@ button, input, select, textarea { font-family: inherit; }
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 72px;
+  /* 高度自适应：随附件数量自然增高；仅极端数量（超出 40vh）时才内部滚动 */
+  max-height: 40vh;
   overflow: auto;
 }
 

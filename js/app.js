@@ -113,6 +113,27 @@ const MODULES = [
     },
   },
   {
+    id: 'report',
+    name: '报告/报表管理',
+    home: 'report/index.html',
+    getSidebar: function () {
+      return [
+        {
+          id: 'biz',
+          name: '业务界面',
+          items: [
+            { id: 'monthly-brief', name: '双碳管理月度简报', href: 'report/index.html' },
+            { id: 'emission-anomaly', name: '碳排放异动分析', href: 'report/anomaly.html' },
+            { id: 'benchmark', name: '碳对标分析', href: 'report/benchmark.html' },
+            { id: 'monthly', name: '碳月报及差异分析', href: 'report/monthly.html' },
+            { id: 'semiannual', name: '碳排放半年度报告', href: 'report/semiannual.html' },
+          ],
+        },
+        docsSidebarGroup('report'),
+      ];
+    },
+  },
+  {
     id: 'system',
     name: '系统管理',
     home: 'system/index.html',

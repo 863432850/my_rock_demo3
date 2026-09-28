@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>碳资产对标分析报告</title>
+  <style id="brief-style">
+    /* ===== 碳资产对标分析报告页（拟 A4 文档，可下载/打印） ===== */
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #e9edf3;
+      font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Source Han Sans SC", sans-serif;
+      color: #222;
+    }
+
+    /* 顶部工具条（下载时不包含） */
+    .brief-toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 20px;
+      background: #fff;
+      border-bottom: 1px solid #e4e8ee;
+      box-shadow: 0 2px 8px rgba(20, 40, 30, 0.06);
+    }
+    .brief-toolbar .bt-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 13px;
+      color: #00b42a;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .brief-toolbar .bt-back:hover { text-decoration: underline; }
+    .brief-toolbar .bt-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .brief-toolbar .bt-actions { margin-left: auto; display: flex; gap: 8px; }
+    .brief-toolbar .bt-btn {
+      height: 30px;
+      padding: 0 14px;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      border: 1px solid #00b42a;
+      background: #00b42a;
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .brief-toolbar .bt-btn.is-ghost { background: #fff; color: #00b42a; }
+    .brief-toolbar .bt-btn:hover { filter: brightness(1.06); }
+    .brief-toolbar .bt-btn svg { width: 14px; height: 14px; }
+
+    /* A4 纸面 */
+    .brief-page {
+      width: 920px;
+      margin: 22px auto 40px;
+      background: #fff;
+      box-shadow: 0 4px 24px rgba(20, 40, 30, 0.10);
+      padding: 64px 72px 72px;
+      line-height: 1.8;
+    }
+    .brief-page + .brief-page { margin-top: 18px; }
+
+    /* 封面 */
+    .brief-cover { text-align: center; padding: 130px 0 90px; position: relative; }
+    .brief-cover .cover-kicker {
+      display: inline-block;
+      font-size: 13px;
+      letter-spacing: 6px;
+      color: #00b42a;
+      border: 1px solid #00b42a;
+      border-radius: 20px;
+      padding: 4px 18px 4px 24px;
+      margin-bottom: 44px;
+    }
+    .brief-cover h1 {
+      margin: 0 0 14px;
+      font-size: 34px;
+      letter-spacing: 2px;
+      color: #1a1a1a;
+      font-weight: 700;
+      line-height: 1.5;
+    }
+    .brief-cover .cover-month {
+      font-size: 20px;
+      color: #00b42a;
+      letter-spacing: 4px;
+      font-weight: 600;
+      margin-top: 10px;
+    }
+    .brief-cover .cover-region {
+      display: inline-block;
+      margin-top: 16px;
+      font-size: 14px;
+      color: #1f7a3a;
+      background: #e9f7ee;
+      border: 1px solid #c8e8d2;
+      border-radius: 16px;
+      padding: 4px 18px;
+      letter-spacing: 1px;
+    }
+    .brief-cover .cover-line {
+      width: 120px;
+      height: 3px;
+      background: #00b42a;
+      margin: 40px auto 0;
+      border-radius: 2px;
+    }
+    .brief-cover .cover-foot {
+      margin-top: 110px;
+      font-size: 13px;
+      color: #8a9199;
+      line-height: 2;
+    }
+
+    /* 目录 */
+    .brief-toc h2 { font-size: 20px; margin: 0 0 18px; letter-spacing: 2px; }
+    .brief-toc ol { margin: 0; padding: 0; list-style: none; }
+    .brief-toc .toc-l1 {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 12px 0 4px;
+    }
+    .brief-toc .toc-l2 { font-size: 13.5px; color: #555; margin: 2px 0 2px 22px; }
+    .brief-toc a { color: inherit; text-decoration: none; }
+    .brief-toc a:hover { color: #00b42a; }
+
+    /* 章节标题 */
+    .brief-h1 {
+      font-size: 21px;
+      margin: 34px 0 14px;
+      padding: 8px 0 8px 14px;
+      border-left: 5px solid #00b42a;
+      background: linear-gradient(90deg, #e9f7ee 0%, rgba(233, 247, 238, 0) 70%);
+      letter-spacing: 1px;
+    }
+    .brief-h2 {
+      font-size: 16.5px;
+      margin: 26px 0 10px;
+      color: #1a1a1a;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .brief-h2::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      background: #00b42a;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .brief-p { font-size: 13.5px; color: #333; margin: 8px 0; }
+    .brief-p strong { color: #00b42a; }
+    .brief-ol { margin: 8px 0; padding-left: 22px; font-size: 13.5px; color: #333; }
+    .brief-ol li { margin: 3px 0; }
+
+    /* 图 */
+    .chart-box {
+      border: 1px solid #e8ebef;
+      border-radius: 6px;
+      padding: 12px 14px 6px;
+      margin: 12px 0 4px;
+      background: #fff;
+    }
+    .chart-box svg { width: 100%; height: auto; display: block; }
+    .chart-caption {
+      text-align: center;
+      font-size: 12.5px;
+      color: #8a9199;
+      margin: 4px 0 16px;
+    }
+
+    /* 表 */
+    .table-caption {
+      font-size: 13px;
+      color: #333;
+      margin: 16px 0 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+    .table-caption .unit { font-size: 12px; color: #8a9199; }
+    .btable { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-bottom: 6px; }
+    .btable th, .btable td {
+      border: 1px solid #e3e7ec;
+      padding: 6px 8px;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+    .btable th { background: #e9f7ee; color: #1a1a1a; font-weight: 600; }
+    .btable tbody tr:nth-child(even) td { background: #fafcfb; }
+    .btable .is-pos { color: #d4380d; }
+    .btable .is-neg { color: #2ba471; }
+    .btable .is-self { background: #fff7e8 !important; font-weight: 600; }
+    .btable-note { font-size: 12px; color: #98a1ab; margin: 2px 0 12px; }
+
+    /* 横向条形图 */
+    .hbars { margin: 8px 0 4px; }
+    .hbar-row { display: flex; align-items: center; gap: 10px; margin: 7px 0; font-size: 12.5px; }
+    .hbar-row .hbar-label { width: 150px; text-align: right; color: #444; flex-shrink: 0; }
+    .hbar-row .hbar-track { flex: 1; height: 16px; background: #f2f4f7; border-radius: 3px; overflow: hidden; }
+    .hbar-row .hbar-fill { height: 100%; border-radius: 3px; }
+    .hbar-row .hbar-val { width: 130px; color: #333; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+    .hbar-row.is-self .hbar-label { font-weight: 700; color: #b25f00; }
+    .hbar-row.is-self .hbar-val { font-weight: 700; color: #b25f00; }
+
+    /* 摘要 · 核心指标卡 */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 14px 0 18px;
+    }
+    .kpi-card {
+      border: 1px solid #e5eee8;
+      border-radius: 8px;
+      padding: 12px 14px;
+      background: linear-gradient(160deg, #f4fbf6 0%, #ffffff 75%);
+    }
+    .kpi-card.is-self {
+      border-color: #ffd591;
+      background: linear-gradient(160deg, #fff7e8 0%, #ffffff 80%);
+    }
+    .kpi-card .kpi-name { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
+    .kpi-card .kpi-val { font-size: 20px; font-weight: 700; color: #1a1a1a; font-variant-numeric: tabular-nums; }
+    .kpi-card .kpi-val small { font-size: 12px; font-weight: 400; color: #8a9199; margin-left: 2px; }
+    .kpi-card .kpi-delta { font-size: 11.5px; margin-top: 3px; }
+    .kpi-card .kpi-delta.is-pos { color: #d4380d; }
+    .kpi-card .kpi-delta.is-neg { color: #2ba471; }
+    .kpi-card .kpi-delta.is-flat { color: #98a1ab; }
+
+    /* 排名横幅 */
+    .rank-banner {
+      display: flex;
+      align-items: center;
+      gap: 22px;
+      border: 1px solid #e5eee8;
+      border-radius: 10px;
+      padding: 16px 22px;
+      margin: 12px 0;
+      background: linear-gradient(120deg, #f4fbf6 0%, #ffffff 70%);
+    }
+    .rank-banner .rank-no {
+      font-size: 30px;
+      font-weight: 800;
+      color: #00b42a;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    .rank-banner .rank-no small { font-size: 13px; font-weight: 400; color: #8a9199; margin-left: 4px; }
+    .rank-banner .rank-info { flex: 1; min-width: 0; }
+    .rank-banner .rank-info .t { font-size: 13px; color: #333; margin-bottom: 6px; }
+    .rank-banner .rank-track { height: 10px; background: #eef1f4; border-radius: 5px; overflow: hidden; }
+    .rank-banner .rank-track i { display: block; height: 100%; background: linear-gradient(90deg, #00b42a, #4fd17c); border-radius: 5px; }
+    .rank-banner .rank-info .s { font-size: 11.5px; color: #8a9199; margin-top: 5px; }
+
+    /* 优势与短板双栏 */
+    .vs-cols { display: flex; gap: 14px; margin: 10px 0; }
+    .vs-col { flex: 1; min-width: 0; border-radius: 8px; padding: 14px 16px; }
+    .vs-col h3 { margin: 0 0 8px; font-size: 14.5px; display: flex; align-items: center; gap: 7px; }
+    .vs-col ul { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.9; color: #333; }
+    .vs-col li { margin: 3px 0; }
+    .vs-col.is-good { background: #f4fbf6; border: 1px solid #d8efe0; }
+    .vs-col.is-good h3 { color: #1f7a3a; }
+    .vs-col.is-bad { background: #fff8f6; border: 1px solid #f6ddd6; }
+    .vs-col.is-bad h3 { color: #c53d1d; }
+
+    /* 工作建议 */
+    .advice-list { margin: 8px 0; padding: 0; list-style: none; counter-reset: advice; }
+    .advice-list li {
+      counter-increment: advice;
+      position: relative;
+      padding: 8px 12px 8px 40px;
+      margin: 6px 0;
+      background: #f8faf9;
+      border: 1px solid #edf1ee;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #333;
+      line-height: 1.7;
+    }
+    .advice-list li::before {
+      content: counter(advice);
+      position: absolute;
+      left: 12px;
+      top: 9px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #00b42a;
+      color: #fff;
+      font-size: 11px;
+      line-height: 18px;
+      text-align: center;
+    }
+
+    /* 要点列表 */
+    .point-list { margin: 0; padding-left: 18px; font-size: 12.5px; color: #333; line-height: 1.9; }
+    .point-list li { margin: 3px 0; }
+
+    @media print {
+      body { background: #fff; }
+      .brief-toolbar { display: none; }
+      .brief-page { width: auto; margin: 0; box-shadow: none; padding: 24px 8px; }
+      .brief-cover { page-break-after: always; }
+      .brief-toc { page-break-after: always; }
+      .brief-h1 { page-break-after: avoid; }
+      .chart-box, .btable { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="brief-toolbar" id="brief-toolbar">
+    <a class="bt-back" href="benchmark.html">← 返回碳对标分析</a>
+    <span class="bt-title" id="bt-title">碳资产对标分析报告</span>
+    <div class="bt-actions">
+      <button type="button" class="bt-btn" id="btn-download">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 21h16"/></svg>
+        下载报告（PDF）
+      </button>
+    </div>
+  </div>
+
+  <div id="brief-root"></div>
+
+  <script src="js/vendor/html2canvas.min.js"></script>
+  <script src="js/vendor/jspdf.umd.min.js"></script>
+  <script src="js/asset-report.js"></script>
+</body>
+</html>
