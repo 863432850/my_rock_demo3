@@ -228,7 +228,11 @@ function inferIndustry(companyName) {
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
+
+```
+
 **容器一致性（重要）**：三张纸面都是 `<div class="brief-page">`，修饰类（`brief-cover-wrap` / `brief-toc`）只追加、**不允许**单独覆盖 `width / margin / padding`。目录恰好 **3 条**、正文恰好 **3 个** `<h1 class="brief-h1">`（id 依次为 `sec-0` / `sec-1` / `sec-2`），章节数量、顺序、名称一字不差。
+
 
 
 ### 2.3 设计规格（完整 CSS，逐字使用）
@@ -724,7 +728,7 @@ function yoyPhrase(pct) {
 ```html
 <ul class="point-list">
   <li>排放量最高月为 {maxM.label}（{fmt(maxM.emission,2)} 万tCO₂），最低月为 {minM.label}（{fmt(minM.emission,2)} 万tCO₂），月度波动主要来自生产负荷变化。</li>
-  <li>单位{product}碳排放量由 {firstAvail.label} 的 {fmt(firstAvail.intensity,4)} {intUnit} 变为 {lastAvail.label} 的 {fmt(lastAvail.intensity,4)} {intUnit}，累计{下降|上升} {绝对值}{%}。</li>
+  <li>单位{product}碳排放量由 {firstAvail.label} 的 {fmt(firstAvail.intensity,4)} {intUnit} 变为 {lastAvail.label} 的 {fmt(lastAvail.intensity,4)} {intUnit}，累计{下降|上升} {fmt(变化率绝对值,2)}%。</li>
   <li>强度最优月为 {bestInt.label}（{fmt(bestInt.intensity,4)} {intUnit}），最差月为 {worstInt.label}（{fmt(worstInt.intensity,4)} {intUnit}）。</li>
 </ul>
 ```

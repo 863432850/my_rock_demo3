@@ -13,7 +13,7 @@ var DEFAULT_FLOWCHART = {
 var DEFAULT_REQUIREMENTS = {
   "html": "正常获取界面数据组成Json作为入参，组成Md文档发送给探路者智能体。<div><br></div>",
   "lineHeight": "",
-  "savedAt": "2026-10-09 13:32:21",
+  "savedAt": "2026-10-09 13:46:27",
   "attachments": [
     {
       "id": "mv0j338vqez7tn",
@@ -31,15 +31,6 @@ var DEFAULT_REQUIREMENTS = {
       "filePath": "assets/report/requirements/mv0j33fbmbtlmy.md",
       "size": 59841,
       "sizeText": "58.4 KB",
-      "savedAt": "2026-10-09 13:31:59"
-    },
-    {
-      "id": "mv0j33k8we8r2z",
-      "fileName": "碳排放半年度报告-提示词.md",
-      "fileType": "text/x-markdown",
-      "filePath": "assets/report/requirements/mv0j33k8we8r2z.md",
-      "size": 60519,
-      "sizeText": "59.1 KB",
       "savedAt": "2026-10-09 13:31:59"
     },
     {
@@ -95,6 +86,15 @@ var DEFAULT_REQUIREMENTS = {
       "size": 54567,
       "sizeText": "53.3 KB",
       "savedAt": "2026-10-09 13:32:00"
+    },
+    {
+      "id": "mv0jk7fbxwzrs1",
+      "fileName": "碳排放半年度报告-提示词.md",
+      "fileType": "text/x-markdown",
+      "filePath": "assets/report/requirements/mv0jk7fbxwzrs1.md",
+      "size": 60540,
+      "sizeText": "59.1 KB",
+      "savedAt": "2026-10-09 13:45:17"
     }
   ]
 };

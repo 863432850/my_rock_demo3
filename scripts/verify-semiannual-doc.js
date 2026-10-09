@@ -298,7 +298,16 @@ eq('文档中 toc-l1 条数', tocCount, 3);
 const h1Count = (raw.match(/<h1 class="brief-h1" id="sec-/g) || []).length;
 eq('文档中 brief-h1 个数', h1Count, 3);
 
-/* ================= 7. 结构完整性 ================= */
+/* ================= 7. 静态托管安全（Jekyll / Liquid） ================= */
+console.log('=== 静态托管安全 ===');
+/* 这些 md 会被放进静态站点仓库，GitHub Pages 的 Jekyll 会对 .md / .html 做 Liquid 解析：
+   `{%` 会被当成标签起始符（`{%}` 无法闭合 → 构建直接失败），`{{` 会被当成输出标签。
+   文档里的模板占位符一律用单花括号（如 `{fmt(x,2)}%`），**不要**用 `{%` / `{{`。 */
+ok('文档不含 Liquid 标签起始符 {%（会导致 Jekyll 构建失败）', raw.indexOf('{%') < 0,
+  '第 ' + (raw.slice(0, raw.indexOf('{%')).split('\n').length) + ' 行');
+ok('文档不含 Liquid 输出起始符 {{', raw.indexOf('{{') < 0);
+
+/* ================= 8. 结构完整性 ================= */
 console.log('=== 结构 ===');
 [
   ['## 一、入参（JSON）', '## 一、入参（JSON）'],
