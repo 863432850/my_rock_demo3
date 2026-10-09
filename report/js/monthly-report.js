@@ -1,9 +1,18 @@
 /**
  * 碳月报（月度报表）· 渲染
  * URL 参数：?tab=emission|trade&month=YYYY-MM
- * - tab=emission → 碳排放月度报表（排放量 / 强度 / 结构 / 趋势 / 明细）
- * - tab=trade    → 碳交易月度报表（成交量 / 均价 / 金额 / 持仓 / 行情）
+ * - tab=emission → 碳排放月度报表（排放量 / 强度 / 产量 / 趋势）
+ * - tab=trade    → 碳交易月度报表（成交量 / 均价 / 金额 / 趋势）
  * 两种报表内容、目录、图表、表格完全不同。
+ *
+ * 【数据口径】本报表**只认入参**，不做兜底：
+ *   · 碳排放：emission.volume（本月排放量，万tCO₂）+ emission.intensity（单位产品强度，tCO₂/t），
+ *     各含 cur[12]（当年 1~12 月）与 prev[12]（上年同期）；产品产量由「排放量 ÷ 强度」派生。
+ *   · 碳交易：trade.volume（成交量，万tCO₂）+ trade.price（成交均价，元/tCO₂），同样 cur[12] / prev[12]；
+ *     成交金额由「成交量 × 成交均价」派生。
+ *   · 排放源结构（化石燃料燃烧 / 生产过程 / 外购电力 / 外购热力）与逐笔成交台账、各交易所行情
+ *     在实际业务中拿不到，本报表**没有**对应章节。
+ *
  * 「下载报告（PDF）」用 html2canvas + jsPDF 生成 PDF。
  */
 
@@ -16,7 +25,10 @@
   /* ---------- 基础工具 ---------- */
 
   function lastDay(y, m) { return new Date(y, m, 0).getDate(); }
+  /** 数值格式化：null / NaN / Infinity 一律输出 --；并把 -0 归一化为 0（避免显示「-0.0」） */
   function fmt(n, d) {
+    if (n == null || !isFinite(n)) return '--';
+    if (n === 0) n = 0;
     return Number(n).toLocaleString('zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d });
   }
   function esc(s) {
@@ -24,10 +36,28 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
   function signed(n, d, unit) {
-    var s = (n > 0 ? '+' : '') + fmt(n, d);
-    return s + (unit ? ' ' + unit : '');
+    if (n == null || !isFinite(n)) return '--';
+    if (n === 0) n = 0;
+    return (n > 0 ? '+' : '') + fmt(n, d) + (unit ? ' ' + unit : '');
   }
-  function deltaCls(n) { return n > 0 ? 'is-pos' : (n < 0 ? 'is-neg' : ''); }
+  function deltaCls(n) { return n == null ? '' : (n > 0 ? 'is-pos' : (n < 0 ? 'is-neg' : '')); }
+  /** 小数舍入（避免浮点尾差） */
+  function r2(n) { return n == null || !isFinite(n) ? null : Math.round(n * 100) / 100; }
+  function r4(n) { return n == null || !isFinite(n) ? null : Math.round(n * 10000) / 10000; }
+  /** 环比/同比百分比：分母必须 > 0，否则 null */
+  function pctOf(cur, base) {
+    if (cur == null || base == null || !isFinite(cur) || !isFinite(base) || base <= 0) return null;
+    return r2((cur - base) / base * 100);
+  }
+  /** 不含数据的图区占位（不引新样式类，用行内样式） */
+  function chartEmpty(text) {
+    return '<div style="height:150px;display:flex;align-items:center;justify-content:center;color:#98a1ab;font-size:13px">'
+      + esc(text) + '</div>';
+  }
+  function isAllZero(arr) {
+    for (var i = 0; i < arr.length; i++) { if (arr[i]) return false; }
+    return true;
+  }
 
   /* ---------- 入参 ---------- */
 
@@ -41,135 +71,129 @@
   var MONTH_CN = Y + '年' + M + '月';
   ORG = qs.get('company') || ORG;
 
-  /** 上一月（跨年回退） */
-  var PM = M === 1 ? 12 : M - 1;
+  /** 上一月（跨年回退）；**M = 1 时没有上月基数**，环比整体不适用 */
+  var HAS_PREV = M > 1;
+  var PM = M === 1 ? 0 : M - 1;
   var PY = M === 1 ? Y - 1 : Y;
   var PREV_CN = PY + '年' + PM + '月';
+  /** 上月标签：M = 1 时没有上月，标签不能拼成「2025年0月」 */
+  var PREV_LABEL = HAS_PREV ? PREV_CN : '无上月基数';
   var YOY_CN = (Y - 1) + '年' + M + '月';
 
-  /* ---------- 演示数据（唯一数据源） ---------- */
+  /* ---------- 入参数组（零兜底；长度不足按 0 补，超长截断） ---------- */
 
-  // 2026 年逐月单位产品碳排放强度（tCO₂/t），与双碳管理月度简报同源
-  var INTENSITY_2026 = [0.7605, 0.7573, 0.7637, 0.7630, 0.7646, 0.7653, 0.7658, 0.7662, 0.7655, 0.7661, 0.7657, 0.7663];
+  /**
+   * 读 12 元素数组：`?name=1,2,3,...`
+   * - 参数**缺失** → 用默认示例值
+   * - 参数**存在但为空** → 12 个 0（即"本期无数据"）
+   * - 元素非数字 → 按 0
+   * - **严禁**用最后一个已有值向后外推
+   */
+  function readSeries(name, def) {
+    if (!qs.has(name)) return def.slice();
+    var raw = String(qs.get(name) || '').trim();
+    var arr = raw ? raw.split(',').map(function (s) { return Number(String(s).trim()); }) : [];
+    var out = [];
+    for (var i = 0; i < 12; i++) out.push(isFinite(arr[i]) ? arr[i] : 0);
+    return out;
+  }
 
-  // 2026 年逐月产品产量（万t），全年合计 ≈ 7904 万t，与平台年产量口径一致
-  var OUTPUT_2026 = [648.2, 641.5, 669.8, 656.4, 673.1, 662.7, 659.4, 661.2, 658.83, 667.5, 655.9, 649.0];
+  // 默认示例（演示口径，量级与《碳排放异动分析报告》一致）
+  var DEF_EV_CUR = [26.84, 24.62, 27.15, 26.38, 26.12, 25.83, 26.47, 26.90, 25.76, 26.31, 25.94, 26.68];
+  var DEF_EV_PREV = [27.79, 25.48, 28.06, 27.28, 27.02, 26.72, 27.38, 27.83, 26.65, 27.22, 26.84, 27.60];
+  var DEF_EI_CUR = [0.7605, 0.7573, 0.7637, 0.7630, 0.7646, 0.7653, 0.7658, 0.7662, 0.7655, 0.7661, 0.7657, 0.7663];
+  var DEF_EI_PREV = [0.7696, 0.7664, 0.7729, 0.7722, 0.7738, 0.7745, 0.7750, 0.7754, 0.7747, 0.7753, 0.7749, 0.7755];
 
-  // 月度排放量（万tCO₂）= 当月产量 × 当月强度
-  var EMISSION = OUTPUT_2026.map(function (q, i) { return +(q * INTENSITY_2026[i]).toFixed(2); });
+  var DEF_TV_CUR = [4.62, 3.85, 5.94, 4.78, 6.73, 5.31, 4.47, 6.12, 5.03, 7.24, 5.58, 4.41];
+  var DEF_TV_PREV = [4.90, 4.08, 6.30, 5.07, 7.13, 5.63, 4.74, 6.49, 5.33, 7.67, 5.91, 4.67];
+  var DEF_TP_CUR = [86.5, 88.2, 85.7, 89.4, 91.2, 88.6, 90.3, 92.1, 90.8, 93.5, 91.7, 94.2];
+  var DEF_TP_PREV = [83.04, 84.67, 82.27, 85.82, 87.55, 85.06, 86.69, 88.42, 87.17, 89.76, 88.03, 90.43];
 
-  // 月度产量同比系数（去年同期产量约为本月的 1/1.055）
-  var YOY_OUTPUT_DIV = 1.055;
-  // 年度强度改善系数（去年同期强度比本月高 1.2%）
-  var YOY_INTENSITY_FACTOR = 1.012;
+  var EV_CUR = readSeries('evCur', DEF_EV_CUR);
+  var EV_PREV = readSeries('evPrev', DEF_EV_PREV);
+  var EI_CUR = readSeries('eiCur', DEF_EI_CUR);
+  var EI_PREV = readSeries('eiPrev', DEF_EI_PREV);
+  var TV_CUR = readSeries('tvCur', DEF_TV_CUR);
+  var TV_PREV = readSeries('tvPrev', DEF_TV_PREV);
+  var TP_CUR = readSeries('tpCur', DEF_TP_CUR);
+  var TP_PREV = readSeries('tpPrev', DEF_TP_PREV);
 
-  // 排放源结构占比（通用口径，非行业特定）：直接排放 62%、间接 38%
-  var SRC_RATIO = {
-    '化石燃料燃烧（直接）': 0.44,
-    '工业生产过程（直接）': 0.18,
-    '外购电力（间接）': 0.26,
-    '外购热力（间接）': 0.12
-  };
-  var SRC_COLORS = ['#00b42a', '#165dff', '#ff7d00', '#722ed1'];
-
-  // 碳交易逐月数据（万tCO₂ / 元·tCO₂⁻¹）
-  var TRADE_VOL = [42.6, 38.2, 55.4, 47.8, 62.3, 51.5, 44.9, 58.7, 49.3, 66.1, 53.8, 45.2];
-  var TRADE_PRICE = [86.5, 88.2, 85.7, 89.4, 91.2, 88.6, 90.3, 92.1, 90.8, 93.5, 91.7, 94.2];
-
-  // 本月持仓（万tCO₂）：配额 + CCER
-  var HOLD_ALLOWANCE = 120.4;
-  var HOLD_CCER = 18.6;
-
-  // 全国碳市场参考行情（本月）
-  var MARKET_ROWS = [
-    ['全国碳排放权交易市场（CEA）', 90.8, 8.9, 172.5],
-    ['上海环境能源交易所', 90.2, 6.4, 68.3],
-    ['北京绿色交易所', 92.6, 3.1, 24.7],
-    ['广东碳排放权交易所', 88.4, 12.6, 41.2],
-    ['湖北碳排放权交易中心', 87.1, 7.8, 19.6],
-    ['天津排放权交易所', 89.3, 2.4, 9.8],
-    ['深圳排放权交易所', 93.5, 1.9, 6.2],
-    ['重庆碳排放权交易中心', 86.2, 4.2, 11.4]
-  ];
-
-  // 本月成交明细（逐笔演示）
-  var DEAL_ROWS = [
-    ['2026-09-03', '买入', 'CEA（配额）', 18.5, 89.6, '履约补仓'],
-    ['2026-09-08', '卖出', 'CEA（配额）', 6.2, 91.4, '盈余变现'],
-    ['2026-09-12', '买入', 'CCER', 5.4, 68.5, '低成本抵销'],
-    ['2026-09-17', '卖出', 'CEA（配额）', 4.8, 92.8, '择机交易'],
-    ['2026-09-22', '买入', 'CEA（配额）', 9.6, 90.1, '储备建仓'],
-    ['2026-09-26', '买入', 'CCER', 4.8, 70.2, '低成本抵销']
-  ];
+  /**
+   * 零兜底：入参数列一律**给 0 就显示 0**（缺位按 0）。
+   * 只有「以它为分母」的派生量在分母 ≤ 0 时输出 `--`（本报表里是「产量 = 排放量 ÷ 强度」）。
+   * 环比/同比的分母为 0 同样输出 `--`。
+   */
 
   /* ---------- 派生指标 ---------- */
 
   /** 碳排放月末指标 */
   function emissionMetrics() {
-    var cur = EMISSION[M - 1];
-    var prev = EMISSION[PM - 1];
-    var isCrossYear = (M === 1);
-    // 去年同期：产量按 1/1.055 折算、强度按 +1.2% 折算（去年强度更高）
-    var yoyOutput = +(OUTPUT_2026[M - 1] / YOY_OUTPUT_DIV).toFixed(2);
-    var yoyIntensity = INTENSITY_2026[M - 1] * YOY_INTENSITY_FACTOR;
-    var yoy = +(yoyOutput * yoyIntensity).toFixed(2);
+    var E1 = r2(EV_CUR[M - 1]);
+    var I1 = r4(EI_CUR[M - 1]);
 
-    var curIntensity = INTENSITY_2026[M - 1];
-    var prevIntensity = INTENSITY_2026[PM - 1];
+    // 年累计排放量（截至本月；入参给 0 就是 0）
+    var cum = 0;
+    for (var i = 0; i < M; i++) cum += EV_CUR[i];
+    cum = r2(cum);
+
+    // 上月基准：M = 1 时不存在
+    var E0m = HAS_PREV ? r2(EV_CUR[PM - 1]) : null;
+    var I0m = HAS_PREV ? r4(EI_CUR[PM - 1]) : null;
+    // 上年同期基准
+    var E0y = r2(EV_PREV[M - 1]);
+    var I0y = r4(EI_PREV[M - 1]);
+
+    // 产品产量 = 排放量 ÷ 强度（唯一算法；强度 ≤ 0 时不可计算 → --）
+    var output = (I1 != null && I1 > 0) ? r4(E1 / I1) : null;
+    var prevOutput = (I0m != null && I0m > 0) ? r4(E0m / I0m) : null;
+    var yoyOutput = (I0y != null && I0y > 0) ? r4(E0y / I0y) : null;
 
     return {
-      cur: cur,
-      prev: prev,
-      yoy: yoy,
-      curIntensity: curIntensity,
-      prevIntensity: prevIntensity,
-      yoyIntensity: +yoyIntensity.toFixed(4),
-      output: OUTPUT_2026[M - 1],
-      prevOutput: OUTPUT_2026[PM - 1],
-      yoyOutput: yoyOutput,
-      momEmission: +(cur - prev).toFixed(2),
-      momEmissionPct: +((cur - prev) / prev * 100).toFixed(2),
-      yoyEmissionDiff: +(cur - yoy).toFixed(2),
-      yoyEmissionPct: +((cur - yoy) / yoy * 100).toFixed(2),
-      momIntensityPct: +((curIntensity - prevIntensity) / prevIntensity * 100).toFixed(2),
-      yoyIntensityPct: +((curIntensity - yoyIntensity) / yoyIntensity * 100).toFixed(2),
-      isCrossYear: isCrossYear
+      cur: E1, curIntensity: I1, cum: cum,
+      prev: E0m, prevIntensity: I0m,
+      yoy: E0y, yoyIntensity: I0y,
+      output: output, prevOutput: prevOutput, yoyOutput: yoyOutput,
+      momEmissionDiff: (E1 != null && E0m != null) ? r2(E1 - E0m) : null,
+      yoyEmissionDiff: (E1 != null && E0y != null) ? r2(E1 - E0y) : null,
+      momEmissionPct: pctOf(E1, E0m),
+      yoyEmissionPct: pctOf(E1, E0y),
+      momIntensityPct: pctOf(I1, I0m),
+      yoyIntensityPct: pctOf(I1, I0y),
+      hasPrev: HAS_PREV
     };
   }
 
   /** 碳交易月末指标 */
   function tradeMetrics() {
-    var volCur = TRADE_VOL[M - 1], volPrev = TRADE_VOL[PM - 1];
-    var prCur = TRADE_PRICE[M - 1];
-    var prPrev = TRADE_PRICE[PM - 1];
-    var amtCur = +(volCur * prCur).toFixed(2);   // 万元 = 万t × 元/t
-    var amtPrev = +(volPrev * prPrev).toFixed(2);
+    var V1 = r2(TV_CUR[M - 1]);
+    var P1 = r2(TP_CUR[M - 1]);
+    var amtCur = (V1 != null && P1 != null) ? r2(V1 * P1) : null;
 
-    // 去年同期：量 ×1.06、价 ×0.96（演示口径，折算出更高量、更低价的去年结构）
-    var volYoy = +(volCur * 1.06).toFixed(2);
-    var prYoy = +(prCur * 0.96).toFixed(2);
-    var amtYoy = +(volYoy * prYoy).toFixed(2);
-
-    var holdTotal = +(HOLD_ALLOWANCE + HOLD_CCER).toFixed(1);
-    var holdValue = +(holdTotal * prCur).toFixed(2);
-
-    // 年累计成交量（截至本月）
     var cumVol = 0;
-    for (var i = 0; i < M; i++) cumVol += TRADE_VOL[i];
-    cumVol = +cumVol.toFixed(2);
+    for (var i = 0; i < M; i++) cumVol += TV_CUR[i];
+    cumVol = r2(cumVol);
+
+    var V0m = HAS_PREV ? r2(TV_CUR[PM - 1]) : null;
+    var P0m = HAS_PREV ? r2(TP_CUR[PM - 1]) : null;
+    var amtPrev = (V0m != null && P0m != null) ? r2(V0m * P0m) : null;
+
+    var V0y = r2(TV_PREV[M - 1]);
+    var P0y = r2(TP_PREV[M - 1]);
+    var amtYoy = (V0y != null && P0y != null) ? r2(V0y * P0y) : null;
 
     return {
-      volCur: volCur, volPrev: volPrev, volYoy: volYoy,
-      prCur: prCur, prPrev: prPrev, prYoy: prYoy,
-      amtCur: amtCur, amtPrev: amtPrev, amtYoy: amtYoy,
-      holdAllowance: HOLD_ALLOWANCE, holdCCER: HOLD_CCER,
-      holdTotal: holdTotal, holdValue: holdValue, cumVol: cumVol,
-      volMomPct: +((volCur - volPrev) / volPrev * 100).toFixed(2),
-      volYoyPct: +((volCur - volYoy) / volYoy * 100).toFixed(2),
-      prMomPct: +((prCur - prPrev) / prPrev * 100).toFixed(2),
-      prYoyPct: +((prCur - prYoy) / prYoy * 100).toFixed(2),
-      amtMomPct: +((amtCur - amtPrev) / amtPrev * 100).toFixed(2),
-      amtYoyPct: +((amtCur - amtYoy) / amtYoy * 100).toFixed(2)
+      volCur: V1, prCur: P1, amtCur: amtCur, cumVol: cumVol,
+      volPrev: V0m, prPrev: P0m, amtPrev: amtPrev,
+      volYoy: V0y, prYoy: P0y, amtYoy: amtYoy,
+      momAmtDiff: (amtCur != null && amtPrev != null) ? r2(amtCur - amtPrev) : null,
+      yoyAmtDiff: (amtCur != null && amtYoy != null) ? r2(amtCur - amtYoy) : null,
+      volMomPct: pctOf(V1, V0m),
+      volYoyPct: pctOf(V1, V0y),
+      prMomPct: pctOf(P1, P0m),
+      prYoyPct: pctOf(P1, P0y),
+      amtMomPct: pctOf(amtCur, amtPrev),
+      amtYoyPct: pctOf(amtCur, amtYoy),
+      hasPrev: HAS_PREV
     };
   }
 
@@ -182,39 +206,25 @@
   /** 横向条形图（最大值归一） */
   function cmpBars(items, unit, dec) {
     var max = 0;
-    items.forEach(function (it) { if (it.value > max) max = it.value; });
+    items.forEach(function (it) { if (it.value != null && it.value > max) max = it.value; });
     max = max || 1;
     var html = '<div class="hbars">';
     items.forEach(function (it) {
-      var pct = Math.max(0.5, it.value / max * 100);
+      var v = it.value;
+      var pct = (v == null) ? 0 : Math.max(0.5, v / max * 100);
       html += '<div class="hbar-row' + (it.self ? ' is-self' : '') + '">'
         + '<span class="hbar-label">' + esc(it.name) + '</span>'
         + '<span class="hbar-track"><span class="hbar-fill" style="width:' + pct.toFixed(1) + '%;background:' + it.color + '"></span></span>'
-        + '<span class="hbar-val">' + fmt(it.value, dec) + (unit ? ' ' + unit : '') + '</span>'
+        + '<span class="hbar-val">' + fmt(v, dec) + (unit ? ' ' + unit : '') + '</span>'
         + '</div>';
     });
     return html + '</div>';
   }
 
-  /** 结构条形图（总和归一，数值后带占比） */
-  function structBars(items, unit, dec) {
-    var total = 0;
-    items.forEach(function (it) { total += it.value; });
-    total = total || 1;
-    var html = '<div class="hbars">';
-    items.forEach(function (it) {
-      var pct = it.value / total * 100;
-      html += '<div class="hbar-row">'
-        + '<span class="hbar-label">' + esc(it.name) + '</span>'
-        + '<span class="hbar-track"><span class="hbar-fill" style="width:' + pct.toFixed(1) + '%;background:' + it.color + '"></span></span>'
-        + '<span class="hbar-val">' + fmt(it.value, dec) + (unit ? ' ' + unit : '') + '（' + pct.toFixed(1) + '%）</span>'
-        + '</div>';
-    });
-    return html + '</div>';
-  }
-
-  /** 12 月折线图（纯 SVG），高亮当前月 */
+  /** 12 月折线图（纯 SVG），高亮当前月；全零序列走无数据态 */
   function lineChart(values, unit) {
+    if (isAllZero(values)) return chartEmpty('本期暂无数据');
+
     var W = 760, H = 240, PL = 52, PR = 18, PT = 18, PB = 34;
     var iw = W - PL - PR, ih = H - PT - PB;
     var min = Math.min.apply(null, values), max = Math.max.apply(null, values);
@@ -227,21 +237,17 @@
 
     var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet">';
 
-    // Y 轴网格 + 刻度
     for (var g = 0; g <= 4; g++) {
       var val = min + range * g / 4;
       var y = Yv(val);
       s += '<line x1="' + PL + '" y1="' + y.toFixed(1) + '" x2="' + (W - PR) + '" y2="' + y.toFixed(1) + '" stroke="#eef1f4" stroke-width="1"/>';
       s += '<text x="' + (PL - 8) + '" y="' + (y + 4).toFixed(1) + '" font-size="10" fill="#98a1ab" text-anchor="end">' + val.toFixed(1) + '</text>';
     }
-    // X 轴标签
     for (var i = 0; i < 12; i++) {
       s += '<text x="' + X(i).toFixed(1) + '" y="' + (H - 12) + '" font-size="10" fill="#98a1ab" text-anchor="middle">' + (i + 1) + '月</text>';
     }
-    // 折线
     var pts = values.map(function (v, i) { return X(i).toFixed(1) + ',' + Yv(v).toFixed(1); }).join(' ');
     s += '<polyline points="' + pts + '" fill="none" stroke="' + GREEN + '" stroke-width="2.2" stroke-linejoin="round"/>';
-    // 数据点 + 当前月高亮
     values.forEach(function (v, i) {
       var isCur = (i === M - 1);
       s += '<circle cx="' + X(i).toFixed(1) + '" cy="' + Yv(v).toFixed(1) + '" r="' + (isCur ? 5 : 3) + '" fill="' + (isCur ? '#ff7d00' : '#fff') + '" stroke="' + (isCur ? '#ff7d00' : GREEN) + '" stroke-width="2"/>';
@@ -253,38 +259,53 @@
     return s;
   }
 
+  /** 摘要卡「说明行」 */
+  function deltaLine(pct, flatText) {
+    if (pct == null) return '<div class="kpi-delta is-flat">' + esc(flatText || '--') + '</div>';
+    return '<div class="kpi-delta ' + deltaCls(pct) + '">环比 ' + signed(pct, 2, '%') + '</div>';
+  }
+  /** 「环比上升/下降 x%」成文片段；不可计算时给替代文案 */
+  function momPhrase(pct, flatText) {
+    if (pct == null) return esc(flatText || '环比不适用');
+    return '环比' + (pct >= 0 ? '上升' : '下降') + ' ' + fmt(Math.abs(pct), 2) + '%';
+  }
+  function yoyPhrase(pct, flatText) {
+    if (pct == null) return esc(flatText || '同比不适用');
+    return '同比' + (pct >= 0 ? '上升' : '下降') + ' ' + fmt(Math.abs(pct), 2) + '%';
+  }
+
   /* ---------- 碳排放月报 ---------- */
 
   function emissionReport() {
     var d = emissionMetrics();
 
     /* 摘要 */
-    var annualEmission = 0;
-    for (var i = 0; i < M; i++) annualEmission += EMISSION[i];
-    annualEmission = +annualEmission.toFixed(2);
-
     var summary = '<div class="kpi-grid">'
-      + '<div class="kpi-card is-self"><div class="kpi-name">本月碳排放量</div><div class="kpi-val">' + fmt(d.cur, 2) + '<small> 万tCO₂</small></div><div class="kpi-delta ' + deltaCls(d.momEmissionPct) + '">环比 ' + signed(d.momEmissionPct, 2, '%') + '</div></div>'
-      + '<div class="kpi-card"><div class="kpi-name">年累计排放量</div><div class="kpi-val">' + fmt(annualEmission, 2) + '<small> 万tCO₂</small></div><div class="kpi-delta is-flat">截至 ' + esc(MONTH_CN) + '</div></div>'
-      + '<div class="kpi-card"><div class="kpi-name">单位产品碳排放强度</div><div class="kpi-val">' + fmt(d.curIntensity, 4) + '<small> tCO₂/t</small></div><div class="kpi-delta ' + deltaCls(d.momIntensityPct) + '">环比 ' + signed(d.momIntensityPct, 2, '%') + '</div></div>'
-      + '<div class="kpi-card"><div class="kpi-name">本月产品产量</div><div class="kpi-val">' + fmt(d.output, 2) + '<small> 万t</small></div><div class="kpi-delta is-flat">月度产量口径</div></div>'
-      + '<div class="kpi-card"><div class="kpi-name">直接排放占比</div><div class="kpi-val">' + fmt(62, 1) + '<small> %</small></div><div class="kpi-delta is-neg">燃料燃烧 + 生产过程</div></div>'
-      + '<div class="kpi-card"><div class="kpi-name">间接排放占比</div><div class="kpi-val">' + fmt(38, 1) + '<small> %</small></div><div class="kpi-delta is-flat">外购电力 + 外购热力</div></div>'
+      + '<div class="kpi-card is-self"><div class="kpi-name">本月碳排放量</div><div class="kpi-val">' + fmt(d.cur, 2) + '<small> 万tCO₂</small></div>'
+      + deltaLine(d.momEmissionPct, HAS_PREV ? '--' : '年度首月，无上月基数') + '</div>'
+      + '<div class="kpi-card"><div class="kpi-name">年累计排放量</div><div class="kpi-val">' + fmt(d.cum, 2) + '<small> 万tCO₂</small></div><div class="kpi-delta is-flat">截至 ' + esc(MONTH_CN) + '</div></div>'
+      + '<div class="kpi-card"><div class="kpi-name">单位产品碳排放强度</div><div class="kpi-val">' + fmt(d.curIntensity, 4) + '<small> tCO₂/t</small></div>'
+      + deltaLine(d.momIntensityPct, HAS_PREV ? '--' : '年度首月，无上月基数') + '</div>'
+      + '<div class="kpi-card"><div class="kpi-name">本月产品产量</div><div class="kpi-val">' + fmt(d.output, 2) + '<small> 万t</small></div><div class="kpi-delta is-flat">按「排放量 ÷ 强度」推算</div></div>'
+      + '<div class="kpi-card"><div class="kpi-name">环比排放变化</div><div class="kpi-val">' + signed(d.momEmissionDiff, 2) + '<small> 万tCO₂</small></div>'
+      + deltaLine(d.momEmissionPct, HAS_PREV ? '--' : '年度首月，无上月基数') + '</div>'
+      + '<div class="kpi-card"><div class="kpi-name">同比排放变化</div><div class="kpi-val">' + signed(d.yoyEmissionDiff, 2) + '<small> 万tCO₂</small></div>'
+      + deltaLine(d.yoyEmissionPct, '上年同期基数无效') + '</div>'
       + '</div>';
 
     summary += '<ul class="point-list">'
-      + '<li>本月碳排放量 <strong>' + fmt(d.cur, 2) + '</strong> 万tCO₂，环比' + (d.momEmissionPct >= 0 ? '上升' : '下降') + ' ' + fmt(Math.abs(d.momEmissionPct), 2) + '%，同比' + (d.yoyEmissionPct >= 0 ? '上升' : '下降') + ' ' + fmt(Math.abs(d.yoyEmissionPct), 2) + '%。</li>'
-      + '<li>单位产品碳排放强度 <strong>' + fmt(d.curIntensity, 4) + '</strong> tCO₂/t，环比' + (d.momIntensityPct >= 0 ? '上升' : '下降') + ' ' + fmt(Math.abs(d.momIntensityPct), 2) + '%。</li>'
-      + '<li>年累计排放量 <strong>' + fmt(annualEmission, 2) + '</strong> 万tCO₂，按当前强度推演全年排放约 ' + fmt(annualEmission / M * 12, 2) + ' 万tCO₂。</li>'
-      + '<li>排放结构以直接排放为主（占比 62.0%），其中化石燃料燃烧占 ' + fmt(44, 1) + '%，是减排重点方向。</li>'
+      + '<li>本月碳排放量 <strong>' + fmt(d.cur, 2) + '</strong> 万tCO₂，' + momPhrase(d.momEmissionPct, HAS_PREV ? '环比不适用' : '本月为年度首月，无上月基数') + '，' + yoyPhrase(d.yoyEmissionPct, '上年同期基数无效') + '。</li>'
+      + '<li>单位产品碳排放强度 <strong>' + fmt(d.curIntensity, 4) + '</strong> tCO₂/t，' + momPhrase(d.momIntensityPct, HAS_PREV ? '环比不适用' : '本月为年度首月，无上月基数') + '，' + yoyPhrase(d.yoyIntensityPct, '上年同期基数无效') + '。</li>'
+      + '<li>本月产品产量 <strong>' + fmt(d.output, 2) + '</strong> 万t（按「本月排放量 ÷ 本月强度」推算）。</li>'
+      + '<li>年累计排放量 <strong>' + fmt(d.cum, 2) + '</strong> 万tCO₂，按当前进度推演全年约 ' + fmt(M > 0 ? d.cum / M * 12 : null, 2) + ' 万tCO₂。</li>'
       + '</ul>';
 
     /* 一、月度排放概况 */
-    var overview = '<p class="brief-p">本月为 ' + esc(MONTH_CN) + '，企业产品产量 ' + fmt(d.output, 2) + ' 万t，碳排放量 ' + fmt(d.cur, 2) + ' 万tCO₂，单位产品碳排放强度 ' + fmt(d.curIntensity, 4) + ' tCO₂/t。与上月（' + esc(PREV_CN) + '）及上年同期（' + esc(YOY_CN) + '）对比如下表。</p>';
+    var overview = '<p class="brief-p">本月为 ' + esc(MONTH_CN) + '，企业碳排放量 ' + fmt(d.cur, 2) + ' 万tCO₂，单位产品碳排放强度 ' + fmt(d.curIntensity, 4) + ' tCO₂/t，对应产品产量 ' + fmt(d.output, 2) + ' 万t。与上月（' + esc(PREV_LABEL) + '）及上年同期（' + esc(YOY_CN) + '）对比如下表。</p>';
 
     overview += '<div class="table-caption"><span>月度排放对比表</span><span class="unit">排放量：万tCO₂；强度：tCO₂/t；产量：万t</span></div>'
       + '<table class="btable"><thead><tr>'
-      + '<th>指标</th><th>本月（' + esc(MONTH_CN) + '）</th><th>上月（' + esc(PREV_CN) + '）</th><th>环比</th><th>上年同期（' + esc(YOY_CN) + '）</th><th>同比</th>'
+      + '<th>指标</th><th>本月（' + esc(MONTH_CN) + '）</th><th>上月（' + esc(PREV_LABEL) + '）</th><th>环比</th><th>上年同期（' + esc(YOY_CN) + '）</th><th>同比</th>'
       + '</tr></thead><tbody>'
       + '<tr><td>碳排放量</td><td class="is-self">' + fmt(d.cur, 2) + '</td><td>' + fmt(d.prev, 2) + '</td>'
       + '<td class="' + deltaCls(d.momEmissionPct) + '">' + signed(d.momEmissionPct, 2, '%') + '</td>'
@@ -292,88 +313,57 @@
       + '<tr><td>单位产品碳排放强度</td><td class="is-self">' + fmt(d.curIntensity, 4) + '</td><td>' + fmt(d.prevIntensity, 4) + '</td>'
       + '<td class="' + deltaCls(d.momIntensityPct) + '">' + signed(d.momIntensityPct, 2, '%') + '</td>'
       + '<td>' + fmt(d.yoyIntensity, 4) + '</td><td class="' + deltaCls(d.yoyIntensityPct) + '">' + signed(d.yoyIntensityPct, 2, '%') + '</td></tr>'
+      + '<tr><td>产品产量</td><td class="is-self">' + fmt(d.output, 2) + '</td><td>' + fmt(d.prevOutput, 2) + '</td>'
+      + '<td class="' + deltaCls(pctOf(d.output, d.prevOutput)) + '">' + signed(pctOf(d.output, d.prevOutput), 2, '%') + '</td>'
+      + '<td>' + fmt(d.yoyOutput, 2) + '</td><td class="' + deltaCls(pctOf(d.output, d.yoyOutput)) + '">' + signed(pctOf(d.output, d.yoyOutput), 2, '%') + '</td></tr>'
       + '</tbody></table>'
-      + '<div class="btable-note">注：环比 =（本月 − 上月）÷ 上月 × 100%；同比 =（本月 − 上年同期）÷ 上年同期 × 100%；单位产品碳排放强度按当月产品产量口径计算。</div>';
+      + '<div class="btable-note">注：环比 =（本月 − 上月）÷ 上月 × 100%；同比 =（本月 − 上年同期）÷ 上年同期 × 100%；'
+      + '产品产量由「排放量 ÷ 单位产品碳排放强度」推算（保留 4 位小数），不是独立台账数据。'
+      + (HAS_PREV ? '' : '本月为年度首月，无上月基数，环比相关一律为 `--`。') + '</div>';
 
     overview += chartBlock(cmpBars([
       { name: '本月（' + MONTH_CN + '）', value: d.cur, color: '#ff7d00', self: true },
-      { name: '上月（' + PREV_CN + '）', value: d.prev, color: GREEN },
+      { name: '上月（' + PREV_LABEL + '）', value: d.prev, color: GREEN },
       { name: '上年同期（' + YOY_CN + '）', value: d.yoy, color: '#165dff' }
     ], '万tCO₂', 2), '（图）本月 / 上月 / 上年同期碳排放量对比');
 
-    /* 二、排放结构分析 */
-    var structItems = [];
-    var srcNames = Object.keys(SRC_RATIO);
-    srcNames.forEach(function (name, i) {
-      structItems.push({ name: name, value: +(d.cur * SRC_RATIO[name]).toFixed(2), color: SRC_COLORS[i] });
-    });
-    var directSum = 0, indirectSum = 0;
-    srcNames.forEach(function (name) {
-      var v = d.cur * SRC_RATIO[name];
-      if (name.indexOf('直接') >= 0) directSum += v; else indirectSum += v;
-    });
-
-    var struct = '<p class="brief-p">本月碳排放按排放源拆解如下：直接排放（化石燃料燃烧、工业生产过程）合计 <strong>' + fmt(directSum, 2) + '</strong> 万tCO₂，占 ' + fmt(directSum / d.cur * 100, 1) + '%；间接排放（外购电力、外购热力）合计 <strong>' + fmt(indirectSum, 2) + '</strong> 万tCO₂，占 ' + fmt(indirectSum / d.cur * 100, 1) + '%。</p>'
-      + chartBlock(structBars(structItems, '万tCO₂', 2), '（图）本月碳排放源结构分布（' + MONTH_CN + '）')
-      + '<ul class="point-list">'
-      + '<li><strong>化石燃料燃烧</strong>是最大排放源，本月 ' + fmt(d.cur * SRC_RATIO['化石燃料燃烧（直接）'], 2) + ' 万tCO₂，占比 ' + fmt(SRC_RATIO['化石燃料燃烧（直接）'] * 100, 1) + '%，可通过燃料替代与能效提升压降。</li>'
-      + '<li><strong>外购电力</strong>本月 ' + fmt(d.cur * SRC_RATIO['外购电力（间接）'], 2) + ' 万tCO₂，占比 ' + fmt(SRC_RATIO['外购电力（间接）'] * 100, 1) + '%，绿电采购与绿证消纳是主要改善路径。</li>'
-      + '<li><strong>工业生产过程</strong>本月 ' + fmt(d.cur * SRC_RATIO['工业生产过程（直接）'], 2) + ' 万tCO₂，占比 ' + fmt(SRC_RATIO['工业生产过程（直接）'] * 100, 1) + '%，与产量高度相关，需通过原料替代与工艺优化降低。</li>'
-      + '<li><strong>外购热力</strong>本月 ' + fmt(d.cur * SRC_RATIO['外购热力（间接）'], 2) + ' 万tCO₂，占比 ' + fmt(SRC_RATIO['外购热力（间接）'] * 100, 1) + '%，建议提升余热回收利用率。</li>'
-      + '</ul>';
-
-    /* 三、月度趋势回顾 */
-    var trend = '<p class="brief-p">下图为 ' + Y + ' 年 1~12 月碳排放量走势（橙点为当前月 ' + M + ' 月）。全年度各月排放量介于 ' + fmt(Math.min.apply(null, EMISSION), 2) + ' ~ ' + fmt(Math.max.apply(null, EMISSION), 2) + ' 万tCO₂ 之间，整体波动平稳。</p>'
-      + chartBlock(lineChart(EMISSION), '（图）' + Y + ' 年逐月碳排放量走势（万tCO₂）');
+    /* 二、月度趋势回顾 */
+    var trend = '<p class="brief-p">下图为 ' + Y + ' 年 1~12 月碳排放量走势（橙点为当前月 ' + M + ' 月）。'
+      + (isAllZero(EV_CUR)
+        ? '本期未提供逐月排放量数据，趋势暂不可绘制。'
+        : '全年度各月排放量介于 ' + fmt(Math.min.apply(null, EV_CUR), 2) + ' ~ ' + fmt(Math.max.apply(null, EV_CUR), 2) + ' 万tCO₂ 之间。')
+      + '</p>'
+      + chartBlock(lineChart(EV_CUR), '（图）' + Y + ' 年逐月碳排放量走势（万tCO₂）');
 
     trend += '<ul class="point-list">'
-      + '<li>本月排放量 ' + fmt(d.cur, 2) + ' 万tCO₂，在全年逐月序列中位列第 ' + (EMISSION.map(function (v, i) { return { v: v, i: i }; }).sort(function (a, b) { return b.v - a.v; }).map(function (o) { return o.i; }).indexOf(M - 1) + 1) + ' 位。</li>'
-      + '<li>全年排放量最高月为 ' + (EMISSION.indexOf(Math.max.apply(null, EMISSION)) + 1) + ' 月（' + fmt(Math.max.apply(null, EMISSION), 2) + ' 万tCO₂），最低月为 ' + (EMISSION.indexOf(Math.min.apply(null, EMISSION)) + 1) + ' 月（' + fmt(Math.min.apply(null, EMISSION), 2) + ' 万tCO₂）。</li>'
-      + '<li>月度间排放量差异主要来自产品产量的季节波动，单位产品碳排放强度全年保持在 ' + fmt(Math.min.apply(null, INTENSITY_2026), 4) + ' ~ ' + fmt(Math.max.apply(null, INTENSITY_2026), 4) + ' tCO₂/t 区间。</li>'
+      + '<li>本月排放量 ' + fmt(d.cur, 2) + ' 万tCO₂，在全年逐月序列中位列第 ' + (EV_CUR.map(function (v, i) { return { v: v, i: i }; }).sort(function (a, b) { return b.v - a.v; }).map(function (o) { return o.i; }).indexOf(M - 1) + 1) + ' 位。</li>'
+      + '<li>全年排放量最高月为 ' + (EV_CUR.indexOf(Math.max.apply(null, EV_CUR)) + 1) + ' 月（' + fmt(Math.max.apply(null, EV_CUR), 2) + ' 万tCO₂），最低月为 ' + (EV_CUR.indexOf(Math.min.apply(null, EV_CUR)) + 1) + ' 月（' + fmt(Math.min.apply(null, EV_CUR), 2) + ' 万tCO₂）。</li>'
+      + '<li>月度间排放量差异主要来自产品产量的季节波动；单位产品碳排放强度全年保持在 ' + fmt(Math.min.apply(null, EI_CUR), 4) + ' ~ ' + fmt(Math.max.apply(null, EI_CUR), 4) + ' tCO₂/t 区间。</li>'
       + '</ul>';
 
-    /* 四、数据明细 */
-    var detail = '<div class="table-caption"><span>本月排放数据明细（按排放源）</span><span class="unit">排放量：万tCO₂</span></div>'
-      + '<table class="btable"><thead><tr>'
-      + '<th>排放源</th><th>排放类型</th><th>本月排放量</th><th>占比</th><th>上月排放量</th><th>环比</th>'
-      + '</tr></thead><tbody>';
-    srcNames.forEach(function (name) {
-      var cur = d.cur * SRC_RATIO[name];
-      var prev = d.prev * SRC_RATIO[name];
-      var mom = +((cur - prev) / prev * 100).toFixed(2);
-      detail += '<tr><td>' + esc(name.replace(/（.*?）/, '')) + '</td>'
-        + '<td>' + esc(name.indexOf('直接') >= 0 ? '直接排放' : '间接排放') + '</td>'
-        + '<td>' + fmt(cur, 2) + '</td><td>' + fmt(SRC_RATIO[name] * 100, 1) + '%</td>'
-        + '<td>' + fmt(prev, 2) + '</td><td class="' + deltaCls(mom) + '">' + signed(mom, 2, '%') + '</td></tr>';
-    });
-    detail += '</tbody><tfoot><tr><td>合计</td><td>—</td><td>' + fmt(d.cur, 2) + '</td><td>100.0%</td><td>' + fmt(d.prev, 2) + '</td>'
-      + '<td class="' + deltaCls(d.momEmissionPct) + '">' + signed(d.momEmissionPct, 2, '%') + '</td></tr></tfoot></table>'
-      + '<div class="btable-note">注：各排放源环比按「本月排放量 − 上月排放量 ÷ 上月排放量 × 100%」计算；排放类型分为直接排放（范围一）与间接排放（范围二）。</div>';
-
+    /* 三、本月工作建议 */
     var advice = '<ol class="advice-list">'
-      + '<li><strong>紧盯强度指标：</strong>本月单位产品碳排放强度 ' + fmt(d.curIntensity, 4) + ' tCO₂/t，环比' + (d.momIntensityPct >= 0 ? '上升' : '下降') + ' ' + fmt(Math.abs(d.momIntensityPct), 2) + '%，建议将强度纳入月度绩效考核，防止反弹。</li>'
-      + '<li><strong>压降燃料燃烧排放：</strong>化石燃料燃烧占本月排放 ' + fmt(SRC_RATIO['化石燃料燃烧（直接）'] * 100, 1) + '%，建议提高清洁燃料替代比例、优化燃烧控制，持续降低单位产品燃料消耗。</li>'
-      + '<li><strong>提升绿电消纳：</strong>外购电力占本月排放 ' + fmt(SRC_RATIO['外购电力（间接）'] * 100, 1) + '%，建议扩大绿电采购与分布式光伏自发自用规模，降低外购电力排放因子。</li>'
-      + '<li><strong>完善计量台账：</strong>按排放源逐月核对活动数据与排放因子，确保月度排放数据可追溯、可核证，为年度履约与核查打好基础。</li>'
+      + '<li><strong>紧盯强度指标：</strong>本月单位产品碳排放强度 ' + fmt(d.curIntensity, 4) + ' tCO₂/t，' + momPhrase(d.momIntensityPct, '环比不适用') + '，建议将强度纳入月度绩效考核，防止反弹。</li>'
+      + '<li><strong>分析排放波动：</strong>本月排放量 ' + momPhrase(d.momEmissionPct, '环比不适用') + '、' + yoyPhrase(d.yoyEmissionPct, '同比不适用') + '，'
+      + '建议对照《碳排放差异分析报告》核查产量与强度各自的贡献，定位波动主因。</li>'
+      + '<li><strong>推进能效降碳：</strong>聚焦燃料替代、余热余压回收与绿电消纳，持续压降单位产品碳排放强度，从源头减少排放对产量的依赖。</li>'
+      + '<li><strong>完善计量台账：</strong>按月核对活动数据与排放因子，确保月度排放量、产品产量与强度三项数据可追溯、可核证，为年度履约与核查打好基础。</li>'
       + '</ol>';
 
     return {
       title: '碳排放月报',
       kicker: '碳 排 放 月 报',
       toc: [
-        ['摘要 · 本月核心指标概览', '#sec-0', 'l1'],
-        ['一、月度排放概况', '#sec-1', 'l1'],
-        ['二、排放结构分析', '#sec-2', 'l1'],
-        ['三、月度趋势回顾', '#sec-3', 'l1'],
-        ['四、数据明细', '#sec-4', 'l1']
+        ['摘要 · 本月核心指标概览', '#sec-0'],
+        ['一、月度排放概况', '#sec-1'],
+        ['二、月度趋势回顾', '#sec-2'],
+        ['三、本月工作建议', '#sec-3']
       ],
       sections: [
         ['摘要 · 本月核心指标概览', 'sec-0', summary],
         ['一、月度排放概况', 'sec-1', overview],
-        ['二、排放结构分析', 'sec-2', struct],
-        ['三、月度趋势回顾', 'sec-3', trend],
-        ['四、数据明细', 'sec-4', detail],
-        ['五、本月工作建议', 'sec-5', advice]
+        ['二、月度趋势回顾', 'sec-2', trend],
+        ['三、本月工作建议', 'sec-3', advice]
       ]
     };
   }
@@ -385,27 +375,32 @@
 
     /* 摘要 */
     var summary = '<div class="kpi-grid">'
-      + '<div class="kpi-card is-self"><div class="kpi-name">本月成交量</div><div class="kpi-val">' + fmt(d.volCur, 2) + '<small> 万tCO₂</small></div><div class="kpi-delta ' + deltaCls(d.volMomPct >= 0 ? 1 : -1) + '">环比 ' + signed(d.volMomPct, 2, '%') + '</div></div>'
-      + '<div class="kpi-card"><div class="kpi-name">本月成交均价</div><div class="kpi-val">' + fmt(d.prCur, 2) + '<small> 元/tCO₂</small></div><div class="kpi-delta ' + deltaCls(-d.prMomPct) + '">环比 ' + signed(d.prMomPct, 2, '%') + '</div></div>'
-      + '<div class="kpi-card"><div class="kpi-name">本月成交金额</div><div class="kpi-val">' + fmt(d.amtCur, 2) + '<small> 万元</small></div><div class="kpi-delta is-flat">量价联动口径</div></div>'
+      + '<div class="kpi-card is-self"><div class="kpi-name">本月成交量</div><div class="kpi-val">' + fmt(d.volCur, 2) + '<small> 万tCO₂</small></div>'
+      + deltaLine(d.volMomPct, HAS_PREV ? '--' : '年度首月，无上月基数') + '</div>'
+      + '<div class="kpi-card"><div class="kpi-name">本月成交均价</div><div class="kpi-val">' + fmt(d.prCur, 2) + '<small> 元/tCO₂</small></div>'
+      + deltaLine(d.prMomPct, HAS_PREV ? '--' : '年度首月，无上月基数') + '</div>'
+      + '<div class="kpi-card"><div class="kpi-name">本月成交金额</div><div class="kpi-val">' + fmt(d.amtCur, 2) + '<small> 万元</small></div><div class="kpi-delta is-flat">按「成交量 × 成交均价」推算</div></div>'
       + '<div class="kpi-card"><div class="kpi-name">年累计成交量</div><div class="kpi-val">' + fmt(d.cumVol, 2) + '<small> 万tCO₂</small></div><div class="kpi-delta is-flat">截至 ' + esc(MONTH_CN) + '</div></div>'
-      + '<div class="kpi-card"><div class="kpi-name">期末持仓量</div><div class="kpi-val">' + fmt(d.holdTotal, 1) + '<small> 万tCO₂</small></div><div class="kpi-delta is-flat">配额 ' + fmt(d.holdAllowance, 1) + ' + CCER ' + fmt(d.holdCCER, 1) + '</div></div>'
-      + '<div class="kpi-card"><div class="kpi-name">期末持仓市值</div><div class="kpi-val">' + fmt(d.holdValue, 2) + '<small> 万元</small></div><div class="kpi-delta is-neg">按本月均价折算</div></div>'
+      + '<div class="kpi-card"><div class="kpi-name">环比金额变化</div><div class="kpi-val">' + signed(d.momAmtDiff, 2) + '<small> 万元</small></div>'
+      + deltaLine(d.amtMomPct, HAS_PREV ? '--' : '年度首月，无上月基数') + '</div>'
+      + '<div class="kpi-card"><div class="kpi-name">同比金额变化</div><div class="kpi-val">' + signed(d.yoyAmtDiff, 2) + '<small> 万元</small></div>'
+      + deltaLine(d.amtYoyPct, '上年同期基数无效') + '</div>'
       + '</div>';
 
     summary += '<ul class="point-list">'
       + '<li>本月碳市场成交 <strong>' + fmt(d.volCur, 2) + '</strong> 万tCO₂，成交均价 <strong>' + fmt(d.prCur, 2) + '</strong> 元/tCO₂，成交金额 ' + fmt(d.amtCur, 2) + ' 万元。</li>'
-      + '<li>成交量环比' + (d.volMomPct >= 0 ? '增加' : '减少') + ' ' + fmt(Math.abs(d.volMomPct), 2) + '%，同比' + (d.volYoyPct >= 0 ? '增加' : '减少') + ' ' + fmt(Math.abs(d.volYoyPct), 2) + '%。</li>'
-      + '<li>成交均价环比' + (d.prMomPct >= 0 ? '上涨' : '下跌') + ' ' + fmt(Math.abs(d.prMomPct), 2) + '%，价格整体处于全国碳市场合理区间。</li>'
-      + '<li>期末持仓 ' + fmt(d.holdTotal, 1) + ' 万tCO₂，市值 ' + fmt(d.holdValue, 2) + ' 万元，可覆盖年度履约需求并保留一定交易弹性。</li>'
+      + '<li>成交量 ' + momPhrase(d.volMomPct, HAS_PREV ? '环比不适用' : '本月为年度首月，无上月基数') + '，' + yoyPhrase(d.volYoyPct, '上年同期基数无效') + '。</li>'
+      + '<li>成交均价 ' + momPhrase(d.prMomPct, HAS_PREV ? '环比不适用' : '本月为年度首月，无上月基数') + '，' + yoyPhrase(d.prYoyPct, '上年同期基数无效') + '。</li>'
+      + '<li>年累计成交量 <strong>' + fmt(d.cumVol, 2) + '</strong> 万tCO₂，按当前进度推演全年约 ' + fmt(M > 0 ? d.cumVol / M * 12 : null, 2) + ' 万tCO₂。</li>'
       + '</ul>';
 
     /* 一、交易概况 */
-    var overview = '<p class="brief-p">本月为 ' + esc(MONTH_CN) + '，企业通过全国碳排放权交易市场及区域试点市场开展配额与 CCER 交易，累计成交 ' + fmt(d.volCur, 2) + ' 万tCO₂，成交金额 ' + fmt(d.amtCur, 2) + ' 万元，成交均价 ' + fmt(d.prCur, 2) + ' 元/tCO₂。与上月及上年同期对比如下表。</p>';
+    var overview = '<p class="brief-p">本月为 ' + esc(MONTH_CN) + '，企业通过全国碳排放权交易市场及区域试点市场开展配额与 CCER 交易，'
+      + '成交 ' + fmt(d.volCur, 2) + ' 万tCO₂，成交均价 ' + fmt(d.prCur, 2) + ' 元/tCO₂，成交金额 ' + fmt(d.amtCur, 2) + ' 万元。与上月及上年同期对比如下表。</p>';
 
     overview += '<div class="table-caption"><span>月度交易对比表</span><span class="unit">成交量：万tCO₂；均价：元/tCO₂；金额：万元</span></div>'
       + '<table class="btable"><thead><tr>'
-      + '<th>指标</th><th>本月（' + esc(MONTH_CN) + '）</th><th>上月（' + esc(PREV_CN) + '）</th><th>环比</th><th>上年同期（' + esc(YOY_CN) + '）</th><th>同比</th>'
+      + '<th>指标</th><th>本月（' + esc(MONTH_CN) + '）</th><th>上月（' + esc(PREV_LABEL) + '）</th><th>环比</th><th>上年同期（' + esc(YOY_CN) + '）</th><th>同比</th>'
       + '</tr></thead><tbody>'
       + '<tr><td>成交量</td><td class="is-self">' + fmt(d.volCur, 2) + '</td><td>' + fmt(d.volPrev, 2) + '</td>'
       + '<td class="' + deltaCls(-d.volMomPct) + '">' + signed(d.volMomPct, 2, '%') + '</td>'
@@ -417,85 +412,51 @@
       + '<td class="' + deltaCls(-d.amtMomPct) + '">' + signed(d.amtMomPct, 2, '%') + '</td>'
       + '<td>' + fmt(d.amtYoy, 2) + '</td><td class="' + deltaCls(-d.amtYoyPct) + '">' + signed(d.amtYoyPct, 2, '%') + '</td></tr>'
       + '</tbody></table>'
-      + '<div class="btable-note">注：成交金额 = 成交量（万t）× 成交均价（元/t），单位为万元；环比、同比算法同排放报表。</div>';
+      + '<div class="btable-note">注：成交金额 = 成交量（万t）× 成交均价（元/t），单位为万元，属派生的量价联动口径，不是独立台账数据；'
+      + '「金额/成交量」行的着色按「收益视角」——增加为绿、减少为红；均价行按名目方向着色。'
+      + (HAS_PREV ? '' : '本月为年度首月，无上月基数，环比相关一律为 `--`。') + '</div>';
 
     overview += chartBlock(cmpBars([
       { name: '本月（' + MONTH_CN + '）', value: d.amtCur, color: '#ff7d00', self: true },
-      { name: '上月（' + PREV_CN + '）', value: d.amtPrev, color: GREEN },
+      { name: '上月（' + PREV_LABEL + '）', value: d.amtPrev, color: GREEN },
       { name: '上年同期（' + YOY_CN + '）', value: d.amtYoy, color: '#165dff' }
     ], '万元', 2), '（图）本月 / 上月 / 上年同期成交金额对比');
 
-    /* 二、成交明细 */
-    var detail = '<div class="table-caption"><span>本月成交明细</span><span class="unit">数量：万tCO₂；价格：元/tCO₂</span></div>'
-      + '<table class="btable"><thead><tr>'
-      + '<th>成交日期</th><th>交易方向</th><th>交易品种</th><th>数量</th><th>成交均价</th><th>成交金额（万元）</th><th>交易用途</th>'
-      + '</tr></thead><tbody>';
-    var sumAmt = 0;
-    DEAL_ROWS.forEach(function (r) {
-      var amt = +(r[3] * r[4]).toFixed(2);
-      sumAmt += amt;
-      detail += '<tr><td>' + esc(r[0]) + '</td>'
-        + '<td class="' + (r[1] === '买入' ? 'is-pos' : 'is-neg') + '">' + esc(r[1]) + '</td>'
-        + '<td>' + esc(r[2]) + '</td><td>' + fmt(r[3], 2) + '</td><td>' + fmt(r[4], 2) + '</td>'
-        + '<td>' + fmt(amt, 2) + '</td><td>' + esc(r[5]) + '</td></tr>';
-    });
-    detail += '</tbody><tfoot><tr><td colspan="5">合计</td><td>' + fmt(sumAmt, 2) + '</td><td>—</td></tr></tfoot></table>'
-      + '<div class="btable-note">注：成交明细为演示数据；买入用于履约补仓与储备建仓，卖出为盈余配额择机变现。</div>';
+    /* 二、月度趋势回顾 */
+    var trend = '<p class="brief-p">下图为 ' + Y + ' 年 1~12 月成交量与成交均价走势（橙点为当前月 ' + M + ' 月）。</p>'
+      + chartBlock(lineChart(TV_CUR), '（图）' + Y + ' 年逐月成交量走势（万tCO₂）')
+      + chartBlock(lineChart(TP_CUR), '（图）' + Y + ' 年逐月成交均价走势（元/tCO₂）');
 
-    /* 三、持仓与资产 */
-    var hold = '<p class="brief-p">截至目前，企业碳资产持仓合计 <strong>' + fmt(d.holdTotal, 1) + '</strong> 万tCO₂，按本月成交均价 ' + fmt(d.prCur, 2) + ' 元/tCO₂ 折算，持仓市值约 <strong>' + fmt(d.holdValue, 2) + '</strong> 万元。持仓结构如下。</p>'
-      + chartBlock(structBars([
-        { name: 'CEA（配额）', value: d.holdAllowance, color: GREEN },
-        { name: 'CCER', value: d.holdCCER, color: '#165dff' }
-      ], '万tCO₂', 1), '（图）期末碳资产持仓结构（' + MONTH_CN + '）');
-
-    hold += '<ul class="point-list">'
-      + '<li>配额持仓 ' + fmt(d.holdAllowance, 1) + ' 万tCO₂，占总持仓 ' + fmt(d.holdAllowance / d.holdTotal * 100, 1) + '%，是履约与交易的主要资产。</li>'
-      + '<li>CCER 持仓 ' + fmt(d.holdCCER, 1) + ' 万tCO₂，占总持仓 ' + fmt(d.holdCCER / d.holdTotal * 100, 1) + '%，具备低成本抵销优势。</li>'
-      + '<li>本月成交量 ' + fmt(d.volCur, 2) + ' 万tCO₂，约占期末持仓的 ' + fmt(d.volCur / d.holdTotal * 100, 1) + '%，交易活跃度适中。</li>'
+    trend += '<ul class="point-list">'
+      + '<li>本月成交量 ' + fmt(d.volCur, 2) + ' 万tCO₂，在全年逐月成交序列中位列第 ' + (TV_CUR.map(function (v, i) { return { v: v, i: i }; }).sort(function (a, b) { return b.v - a.v; }).map(function (o) { return o.i; }).indexOf(M - 1) + 1) + ' 位。</li>'
+      + '<li>全年成交量最高月为 ' + (TV_CUR.indexOf(Math.max.apply(null, TV_CUR)) + 1) + ' 月（' + fmt(Math.max.apply(null, TV_CUR), 2) + ' 万tCO₂），最低月为 ' + (TV_CUR.indexOf(Math.min.apply(null, TV_CUR)) + 1) + ' 月（' + fmt(Math.min.apply(null, TV_CUR), 2) + ' 万tCO₂）。</li>'
+      + '<li>成交均价全年保持在 ' + fmt(Math.min.apply(null, TP_CUR), 2) + ' ~ ' + fmt(Math.max.apply(null, TP_CUR), 2) + ' 元/tCO₂ 区间，价格中枢整体平稳。</li>'
       + '</ul>';
 
-    /* 四、市场行情 */
-    var market = '<p class="brief-p">本月全国及各区域试点碳市场行情如下表，为企业后续交易择时提供参考。</p>'
-      + '<div class="table-caption"><span>主要碳市场行情一览（' + esc(MONTH_CN) + '）</span><span class="unit">均价：元/tCO₂；成交量/成交额：万t / 百万元</span></div>'
-      + '<table class="btable"><thead><tr>'
-      + '<th>市场名称</th><th>成交均价</th><th>成交量</th><th>成交额</th><th>较上月</th>'
-      + '</tr></thead><tbody>';
-    MARKET_ROWS.forEach(function (r, i) {
-      var chg = +((i % 2 === 0 ? 1 : -1) * (0.5 + (i % 3) * 0.7)).toFixed(2);
-      market += '<tr><td>' + esc(r[0]) + '</td><td class="is-self">' + fmt(r[1], 2) + '</td>'
-        + '<td>' + fmt(r[2], 1) + '</td><td>' + fmt(r[3], 1) + '</td>'
-        + '<td class="' + deltaCls(chg) + '">' + signed(chg, 2, '%') + '</td></tr>';
-    });
-    market += '</tbody></table>'
-      + '<div class="btable-note">注：行情数据为演示数据；「较上月」为各市场成交均价环比涨跌幅。</div>';
-
-    market += chartBlock(lineChart(TRADE_PRICE, '元/tCO₂'), '（图）2026 年逐月成交均价走势（元/tCO₂）');
-
+    /* 三、本月交易建议 */
     var advice = '<ol class="advice-list">'
-      + '<li><strong>把握价格窗口：</strong>本月成交均价 ' + fmt(d.prCur, 2) + ' 元/tCO₂，环比' + (d.prMomPct >= 0 ? '上涨' : '下跌') + ' ' + fmt(Math.abs(d.prMomPct), 2) + '%，建议建立价格监测机制，在低位建仓、高位择机变现盈余配额。</li>'
-      + '<li><strong>优化量价节奏：</strong>本月成交量 ' + fmt(d.volCur, 2) + ' 万tCO₂，建议按履约进度分月平滑采购，避免期末集中购碳推高成本。</li>'
-      + '<li><strong>用好 CCER 抵销：</strong>CCER 价格低于配额价，建议在合规比例内提高 CCER 抵销使用比例，降低整体履约成本。</li>'
-      + '<li><strong>盘活存量资产：</strong>期末持仓市值 ' + fmt(d.holdValue, 2) + ' 万元，建议在保障履约的前提下，审慎开展碳质押等碳金融业务，提升资产流动性与收益。</li>'
+      + '<li><strong>把握价格窗口：</strong>本月成交均价 ' + fmt(d.prCur, 2) + ' 元/tCO₂，' + momPhrase(d.prMomPct, '环比不适用') + '，'
+      + '建议建立碳价监测与分批建仓机制，在价格低位增配、高位择机变现盈余配额。</li>'
+      + '<li><strong>优化量价节奏：</strong>本月成交量 ' + fmt(d.volCur, 2) + ' 万tCO₂，' + momPhrase(d.volMomPct, '环比不适用') + '，'
+      + '建议按履约进度制定分月交易计划，避免期末集中购碳推高成本，也避免量能大起大落放大金额波动。</li>'
+      + '<li><strong>用好 CCER 抵销：</strong>CCER 成交价通常低于配额价，建议在合规抵销比例内提高 CCER 使用比例，降低整体履约成本。</li>'
+      + '<li><strong>建立差异跟踪机制：</strong>按月开展「量—价」双因素差异分解（见《碳交易差异分析报告》），对价差效应连续为负的月份及时复盘交易策略，形成「月度分解—策略调整—效果回评」的闭环。</li>'
       + '</ol>';
 
     return {
       title: '碳交易月报',
       kicker: '碳 交 易 月 报',
       toc: [
-        ['摘要 · 本月核心指标概览', '#sec-0', 'l1'],
-        ['一、交易概况', '#sec-1', 'l1'],
-        ['二、成交明细', '#sec-2', 'l1'],
-        ['三、持仓与资产', '#sec-3', 'l1'],
-        ['四、市场行情', '#sec-4', 'l1']
+        ['摘要 · 本月核心指标概览', '#sec-0'],
+        ['一、交易概况', '#sec-1'],
+        ['二、月度趋势回顾', '#sec-2'],
+        ['三、本月交易建议', '#sec-3']
       ],
       sections: [
         ['摘要 · 本月核心指标概览', 'sec-0', summary],
         ['一、交易概况', 'sec-1', overview],
-        ['二、成交明细', 'sec-2', detail],
-        ['三、持仓与资产', 'sec-3', hold],
-        ['四、市场行情', 'sec-4', market],
-        ['五、本月交易建议', 'sec-5', advice]
+        ['二、月度趋势回顾', 'sec-2', trend],
+        ['三、本月交易建议', 'sec-3', advice]
       ]
     };
   }
@@ -516,13 +477,12 @@
 
     html += '<div class="brief-page brief-toc"><h2>目&nbsp;&nbsp;录</h2><ol>';
     cfg.toc.forEach(function (t) {
-      html += '<li class="toc-' + t[2] + '"><a href="' + t[1] + '">' + esc(t[0]) + '</a></li>';
+      html += '<li class="toc-l1"><a href="' + t[1] + '">' + esc(t[0]) + '</a></li>';
     });
-    html += '<li class="toc-l1"><a href="#sec-5">五、' + (TAB === 'trade' ? '本月交易建议' : '本月工作建议') + '</a></li>';
     html += '</ol></div>';
 
     html += '<div class="brief-page">';
-    cfg.sections.forEach(function (s, i) {
+    cfg.sections.forEach(function (s) {
       html += '<h1 class="brief-h1" id="' + s[1] + '">' + esc(s[0]) + '</h1>' + s[2];
     });
     html += '</div>';

@@ -1,9 +1,12 @@
 /**
  * 碳资产对标分析报告 · 渲染（与碳排放对标报告并列，但内容维度完全不同）
- * - URL 参数：?type=asset&year=2026&month=9&region=河南省&company=...
+ * - URL 参数：?type=asset&year=2026&month=9&region=河南省&volume=320&company=...
  * - 不同对标条件生成不同内容：以「区域名 + 年 + 月」为稳定种子
- * - 对标维度聚焦「碳资产」：配额持有、CCER 储备、碳交易绩效、履约保障、资产收益
- *   与碳排放对标（强度/排名/减排潜力）口径不同，互为补充
+ * - 对标维度聚焦「碳资产量」：配额持有量、CCER 储备量、资产结构与规模
+ *   与碳排放对标（强度/排名/降碳空间）口径不同，互为补充
+ * - 【口径】全篇为**实物量口径（万tCO₂）**，不出现任何金额：碳价逐日波动，
+ *   把「碳资产总价值（万元）」当入参会让同一天量、不同天价的数据不可比。
+ *   故入参只收碳资产量，报告也不做「量 × 价」折算。
  * - 「下载报告」用 html2canvas + jsPDF 生成 PDF
  */
 
@@ -19,6 +22,7 @@
   function pad2(n) { return String(n).padStart(2, '0'); }
   function lastDay(y, m) { return new Date(y, m, 0).getDate(); }
   function fmt(n, d) {
+    if (n == null || !isFinite(n)) return '--';
     return Number(n).toLocaleString('zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d });
   }
   function esc(s) {
@@ -63,52 +67,56 @@
   var SEED = (strHash(REGION) ^ Math.imul(Y, 131) ^ Math.imul(M, 977)) >>> 0;
   var rnd = mulberry32(SEED);
 
-  /* ---------- 碳资产数据（锚定平台口径，演示演算） ---------- */
+  /* ---------- 本企业碳资产数据（入参直取，零兜底） ---------- */
 
-  var CARBON_PRICE = 90;   // 元/tCO₂，全国碳市场配额参考均价
-  var CCER_PRICE = 68;     // 元/tCO₂，CCER 市场参考价（较配额折价）
-  var ANNUAL_EMISSION = 6058; // 本企业年度履约排放（万tCO₂），用于覆盖率测算
+  // ?volume= 本企业碳资产量（万tCO₂）。报告为纯实物量口径，不采集金额，也不采集年履约排放量。
+  var IN_VOLUME = qs.has('volume') ? Number(qs.get('volume')) : 320;
 
-  // 本企业配额持有量（万tCO₂）：基准约等于年度排放，年际微扰
-  var entAllowance = +(ANNUAL_EMISSION * (1 + (rnd() - 0.5) * 0.05)).toFixed(0);
-  var entAllowanceVal = +(entAllowance * CARBON_PRICE).toFixed(0); // 万元（万t × 元/t = 万元）
+  var HAS_VOLUME = isFinite(IN_VOLUME) && IN_VOLUME > 0;
 
-  // 本企业 CCER 储备量（万t）：约为配额的 6%~10%
-  var entCCER = +((entAllowance * 0.08) * (1 + (rnd() - 0.5) * 0.3)).toFixed(0);
-  var entCCERVal = +(entCCER * CCER_PRICE).toFixed(0); // 万元（万t × 元/t = 万元）
+  var entVolume = HAS_VOLUME ? +IN_VOLUME.toFixed(2) : null;   // 碳资产量（万tCO₂）
 
-  // 其他碳资产（碳质押/碳远期/碳回购等）：约为配额价值的 4%~8%
-  var entOther = +(entAllowanceVal * 0.06 * (1 + (rnd() - 0.5) * 0.4)).toFixed(0);
-  var entTotal = entAllowanceVal + entCCERVal + entOther; // 碳资产总价值（万元）
+  /* ---------- 资产结构（按固定占比由总量拆解，口径见文档 2.5(2)(3)） ---------- */
 
-  // 区域/行业均值（按区域名稳定偏移；全国 = 行业均值口径）
+  var SHARE_ALLOWANCE = 0.88;   // 配额占比
+  var SHARE_CCER = 0.07;        // CCER 占比（其余约 5% 归入「其他碳资产」，用减法保证三项之和 = 碳资产量）
+
+  var entAllowance = HAS_VOLUME ? +(entVolume * SHARE_ALLOWANCE).toFixed(2) : null;      // 配额持有量 万tCO₂
+  var entCCER = HAS_VOLUME ? +(entVolume * SHARE_CCER).toFixed(2) : null;                // CCER 储备量 万tCO₂
+  var entOther = HAS_VOLUME ? +(entVolume - entAllowance - entCCER).toFixed(2) : null;   // 其他碳资产 万tCO₂
+
+  /* ---------- 对标基准（L3 兜底：区域/行业口径，同条件结果一致） ---------- */
+
+  // 注意：`rnd()` 一律**无条件**消耗（全国分支除外），与入参是否有值无关 —— 见文档 2.5(3)
+  // 行业先进值**高于**行业均值（碳资产量越大越好，先进值应更优 = 更大）；
+  // 这与碳排放对标报告的 `advanced = indAvg × 0.92x`（强度越低越好）方向相反，不要照抄。
   var regionOffset = IS_NATIONAL ? 0 : (rnd() - 0.45) * 0.12;
-  var regionTotalAvg = +(entTotal * (1 + regionOffset)).toFixed(0);
-  var indAvgTotal = +((entTotal) * (1 + (rnd() - 0.42) * 0.10)).toFixed(0);
-  var advancedTotal = +(indAvgTotal * (0.92 + rnd() * 0.02)).toFixed(0);
-
-  // 碳资产收益率（本年碳交易净收益 / 碳资产规模，%）：5%~11%
-  var entROI = +((8 + (rnd() - 0.5) * 6)).toFixed(2);
-  var regionROI = +(entROI * (1 + (rnd() - 0.5) * 0.10)).toFixed(2);
-  var indROI = +(entROI * (1 + (rnd() - 0.30) * 0.12)).toFixed(2);
-  var advancedROI = +(indROI * 1.15).toFixed(2);
-
-  // 配额履约覆盖率（%）：自有配额 / 年度履约排放
-  var entCoverage = +(entAllowance / ANNUAL_EMISSION * 100).toFixed(1);
-  // 碳资产占总资产比例（%）
-  var entAssetRatio = +(1.5 + (rnd() - 0.5) * 0.8).toFixed(2);
+  var uInd = rnd(), uAdv = rnd();
+  var regionAvgVolume = HAS_VOLUME ? +(entVolume * (1 + regionOffset)).toFixed(2) : null;
+  var indAvgVolume = HAS_VOLUME ? +(entVolume * (1 + (uInd - 0.42) * 0.10)).toFixed(2) : null;
+  var advancedVolume = HAS_VOLUME ? +(indAvgVolume * (1.12 + uAdv * 0.04)).toFixed(2) : null;
 
   // 区域样本企业数
   var entCount = IS_NATIONAL ? Math.round(1400 + rnd() * 900) : Math.round(45 + rnd() * 180);
 
-  // 区域排名（按碳资产总价值降序，越高越靠前）
-  var rankPct = clamp(0.5 - (entTotal - regionTotalAvg) / (regionTotalAvg * 0.22), 0.02, 0.98);
-  var rank = Math.max(1, Math.round(entCount * rankPct));
-  var outperform = +((1 - rank / entCount) * 100).toFixed(1);
+  // 区域排名（按碳资产量降序，量越大越靠前）
+  var rank = null, outperform = null;
+  if (HAS_VOLUME) {
+    var rankPct = clamp(0.5 - (entVolume - regionAvgVolume) / (regionAvgVolume * 0.22), 0.02, 0.98);
+    rank = Math.max(1, Math.round(entCount * rankPct));
+    outperform = +((1 - rank / entCount) * 100).toFixed(1);
+  }
 
-  var vsRegion = +((entTotal - regionTotalAvg) / regionTotalAvg * 100).toFixed(2);   // 正=高于区域均值
-  var vsIndustry = +((entTotal - indAvgTotal) / indAvgTotal * 100).toFixed(2);
-  var vsAdvanced = +((entTotal - advancedTotal) / advancedTotal * 100).toFixed(2);
+  var vsRegion = HAS_VOLUME ? +((entVolume - regionAvgVolume) / regionAvgVolume * 100).toFixed(2) : null;   // 正=高于区域均值
+  var vsIndustry = HAS_VOLUME ? +((entVolume - indAvgVolume) / indAvgVolume * 100).toFixed(2) : null;
+  var vsAdvanced = HAS_VOLUME ? +((entVolume - advancedVolume) / advancedVolume * 100).toFixed(2) : null;
+
+  /* ---------- 储备提升空间（两档目标情景，只依赖碳资产量） ---------- */
+
+  var gapAvg = HAS_VOLUME ? +(Math.max(0, indAvgVolume - entVolume)).toFixed(2) : null;          // 差距量 万tCO₂
+  var gapAdvanced = HAS_VOLUME ? +(Math.max(0, advancedVolume - entVolume)).toFixed(2) : null;   // 差距量 万tCO₂
+  var pctAvg = (gapAvg == null) ? null : +(gapAvg / entVolume * 100).toFixed(2);                 // 相对提升幅度 %
+  var pctAdvanced = (gapAdvanced == null) ? null : +(gapAdvanced / entVolume * 100).toFixed(2);
 
   /* ---------- 图表 ---------- */
 
@@ -154,121 +162,151 @@
 
   /** 摘要 · 碳资产对标结论概览 */
   function summaryHtml() {
-    var levelWord = entTotal >= advancedTotal ? '已达行业资产规模先进梯队'
-      : (entTotal >= indAvgTotal ? '高于行业平均、距先进有差距' : '落后于行业平均，资产厚度不足');
-    var levelCls = entTotal >= indAvgTotal ? 'is-neg' : 'is-pos';
+    var levelWord = !HAS_VOLUME ? '本企业数据缺失'
+      : (entVolume >= advancedVolume ? '已达行业资产规模先进梯队'
+        : (entVolume >= indAvgVolume ? '高于行业平均、距先进有差距' : '落后于行业平均，资产厚度不足'));
+    var levelCls = !HAS_VOLUME ? 'is-flat' : (entVolume >= indAvgVolume ? 'is-neg' : 'is-pos');
+
+    /** 对比小字：碳资产量越高越好，v>=0 为「高于」；不可计算时写「本企业数据缺失」 */
+    function cmpDelta(v, unit) {
+      if (v == null) return '<div class="kpi-delta is-flat">本企业数据缺失</div>';
+      var higher = v >= 0;
+      return '<div class="kpi-delta ' + (higher ? 'is-neg' : 'is-pos') + '">本企业' + (higher ? '高于' : '低于') + unit + ' ' + fmt(Math.abs(v), 2) + '%</div>';
+    }
 
     var html = '<div class="kpi-grid">'
-      + '<div class="kpi-card is-self"><div class="kpi-name">本企业碳资产总价值</div><div class="kpi-val">' + fmt(entTotal, 0) + '<small> 万元</small></div><div class="kpi-delta is-flat">' + esc(MONTH_CN) + ' 持仓口径</div></div>'
-      + '<div class="kpi-card"><div class="kpi-name">' + esc(REGION) + '平均值</div><div class="kpi-val">' + fmt(regionTotalAvg, 0) + '<small> 万元</small></div><div class="kpi-delta ' + (vsRegion >= 0 ? 'is-neg' : 'is-pos') + '">本企业' + (vsRegion >= 0 ? '高于' : '低于') + '区域 ' + fmt(Math.abs(vsRegion), 2) + '%</div></div>'
-      + '<div class="kpi-card"><div class="kpi-name">行业平均值（全国）</div><div class="kpi-val">' + fmt(indAvgTotal, 0) + '<small> 万元</small></div><div class="kpi-delta ' + (vsIndustry >= 0 ? 'is-neg' : 'is-pos') + '">本企业' + (vsIndustry >= 0 ? '高于' : '低于') + '行业 ' + fmt(Math.abs(vsIndustry), 2) + '%</div></div>'
-      + '<div class="kpi-card"><div class="kpi-name">碳资产收益率</div><div class="kpi-val">' + fmt(entROI, 2) + '<small> %</small></div><div class="kpi-delta ' + (entROI >= regionROI ? 'is-neg' : 'is-pos') + '">区域均值 ' + fmt(regionROI, 2) + '%</div></div>'
-      + '<div class="kpi-card"><div class="kpi-name">' + esc(REGION) + '排名</div><div class="kpi-val">第 ' + rank + ' 名<small> / 共 ' + entCount + ' 家</small></div><div class="kpi-delta is-flat">区域内同行业企业口径</div></div>'
-      + '<div class="kpi-card"><div class="kpi-name">配额履约覆盖率</div><div class="kpi-val">' + fmt(entCoverage, 1) + '<small> %</small></div><div class="kpi-delta ' + (entCoverage >= 100 ? 'is-neg' : 'is-pos') + '">' + (entCoverage >= 100 ? '配额盈余，履约无忧' : '存在履约缺口') + '</div></div>'
+      + '<div class="kpi-card is-self"><div class="kpi-name">本企业碳资产量</div><div class="kpi-val">' + fmt(entVolume, 2) + '<small> 万tCO₂</small></div><div class="kpi-delta is-flat">' + esc(MONTH_CN) + ' 持仓口径</div></div>'
+      + '<div class="kpi-card"><div class="kpi-name">' + esc(REGION) + '平均值</div><div class="kpi-val">' + fmt(regionAvgVolume, 2) + '<small> 万tCO₂</small></div>' + cmpDelta(vsRegion, '区域') + '</div>'
+      + '<div class="kpi-card"><div class="kpi-name">行业平均值（全国）</div><div class="kpi-val">' + fmt(indAvgVolume, 2) + '<small> 万tCO₂</small></div>' + cmpDelta(vsIndustry, '行业') + '</div>'
+      + '<div class="kpi-card"><div class="kpi-name">行业先进值</div><div class="kpi-val">' + fmt(advancedVolume, 2) + '<small> 万tCO₂</small></div>'
+      + '<div class="kpi-delta ' + (vsAdvanced == null ? 'is-flat' : (vsAdvanced >= 0 ? 'is-neg' : 'is-pos')) + '">'
+      + (vsAdvanced == null ? '本企业数据缺失' : (vsAdvanced >= 0 ? '已达先进水平' : '距先进差距 ' + fmt(Math.abs(vsAdvanced), 2) + '%')) + '</div></div>'
+      + '<div class="kpi-card"><div class="kpi-name">' + esc(REGION) + '排名</div><div class="kpi-val">' + (rank == null ? '--' : '第 ' + rank + ' 名') + '<small>' + (rank == null ? '' : ' / 共 ' + entCount + ' 家') + '</small></div><div class="kpi-delta is-flat">区域内同行业企业口径</div></div>'
+      + '<div class="kpi-card"><div class="kpi-name">超越区域企业比例</div><div class="kpi-val">' + fmt(outperform, 1) + '<small> %</small></div><div class="kpi-delta ' + levelCls + '">' + levelWord + '</div></div>'
       + '</div>';
 
     // 排名横幅
     html += '<div class="rank-banner">'
-      + '<div class="rank-no">No.' + rank + '<small>/ ' + entCount + ' 家</small></div>'
+      + '<div class="rank-no">' + (rank == null ? 'No.--' : 'No.' + rank) + '<small>/ ' + entCount + ' 家</small></div>'
       + '<div class="rank-info"><div class="t">' + esc(REGION) + '同行业企业碳资产规模排名（' + esc(MONTH_CN) + '），超越区域内 <strong>' + fmt(outperform, 1) + '%</strong> 的企业</div>'
-      + '<div class="rank-track"><i style="width:' + clamp(outperform, 1, 100).toFixed(1) + '%"></i></div>'
-      + '<div class="s">排名口径：按碳资产总价值降序排列，数据来源于区域碳市场登记簿、交易结算平台与行业统计</div></div>'
+      + '<div class="rank-track"><i style="width:' + (outperform == null ? 0 : clamp(outperform, 1, 100)).toFixed(1) + '%"></i></div>'
+      + '<div class="s">排名口径：按碳资产量（万tCO₂）降序排列，数据来源于区域碳市场登记簿、交易结算平台与行业统计</div></div>'
       + '</div>';
 
-    // 碳资产总价值对标总览
-    html += chartBlock(cmpBars([
-      { name: '本企业（' + ORG + '）', value: entTotal, color: '#ff7d00', self: true },
-      { name: REGION + '平均值', value: regionTotalAvg, color: GREEN },
-      { name: '行业平均值（全国）', value: indAvgTotal, color: '#165dff' },
-      { name: '行业先进值', value: advancedTotal, color: '#722ed1' }
-    ], '万元', 0), '（图）企业层级碳资产总价值对标总览（' + MONTH_CN + '）');
+    // 碳资产量对标总览（本企业数据缺失时基准不可推导，整图不画）
+    if (!HAS_VOLUME) {
+      html += '<div class="btable-note">本期未提供本企业碳资产数据，对标总览图与排名暂不可用。</div>';
+    } else {
+      html += chartBlock(cmpBars([
+        { name: '本企业（' + ORG + '）', value: entVolume, color: '#ff7d00', self: true },
+        { name: REGION + '平均值', value: regionAvgVolume, color: GREEN },
+        { name: '行业平均值（全国）', value: indAvgVolume, color: '#165dff' },
+        { name: '行业先进值', value: advancedVolume, color: '#722ed1' }
+      ], '万tCO₂', 2), '（图）企业层级碳资产量对标总览（' + MONTH_CN + '）');
+    }
 
     return html;
   }
 
   /** 一、报告定位与核心思路 */
   function positionHtml() {
-    return '<p class="brief-p">本报告为 ' + esc(ORG) + ' 专属碳资产对标专项报告，聚焦企业碳资产的<strong>规模、结构与运营绩效</strong>开展量化研判，'
-      + '与碳排放对标（强度/减排）形成互补——碳排放对标看「排了多少、强度如何」，本看「手里有多少碳资产、运营得好不好」。'
+    return '<p class="brief-p">本报告为 ' + esc(ORG) + ' 专属碳资产对标专项报告，聚焦企业碳资产的<strong>规模与结构</strong>开展量化研判，'
+      + '与碳排放对标（强度/降碳空间）形成互补——碳排放对标看「排了多少、强度如何」，本看「手里有多少碳资产、储备结构是否合理」。'
       + '报告以「' + esc(REGION) + '」为对标区域、以「' + esc(MONTH_CN) + '」为对标期间，'
-      + '将本企业碳资产总价值与区域平均值、行业平均值、行业先进值进行四维对比，并延伸至配额覆盖率、碳资产收益率等运营指标。</p>'
+      + '将本企业碳资产量与区域平均值、行业平均值、行业先进值进行四维对比，并拆解配额、CCER 与其他碳资产的配置结构。</p>'
       + '<p class="brief-p">报告核心思路：<strong>一排名、二对比、三结构、四建议</strong>——'
       + '先以碳资产规模排名锚定企业在区域同行业中的位置；再与区域、行业、先进三级基准逐层对比；'
-      + '拆解配额、CCER、其他碳资产的配置结构并评价运营绩效；最终给出碳资产优化与履约保障建议，为企业盘活碳资产、增厚碳收益提供决策依据。</p>'
-      + '<p class="brief-p">数据口径说明：碳资产价值按持仓量 × 当期市场参考价折算（配额 ' + CARBON_PRICE + ' 元/tCO₂、CCER ' + CCER_PRICE + ' 元/tCO₂）；'
+      + '拆解配额、CCER、其他碳资产的配置结构并定位储备短板；最终给出碳资产储备与结构优化建议，为企业盘活碳资产、提升储备厚度提供决策依据。</p>'
+      + '<p class="brief-p">数据口径说明：碳资产量为<strong>实物量口径</strong>（万tCO₂），由配额持有量、CCER 储备量与其他碳资产三部分构成；'
+      + '碳价逐日波动，故本报告不做「量 × 价」折算、全篇不出现金额，以保证不同期间、不同企业之间可比。'
       + '区域与行业数据来源于区域碳排放权登记簿、碳交易结算平台及行业协会统计，样本企业 ' + entCount + ' 家；先进值取行业前 10% 企业水平。</p>';
   }
 
   /** 二、企业碳资产规模与结构对标 */
   function assetScaleHtml() {
-    var html = '<div class="table-caption"><span>企业碳资产规模对标表</span><span class="unit">单位：万元</span></div>'
+    var html = '<div class="table-caption"><span>企业碳资产规模对标表</span><span class="unit">单位：万tCO₂</span></div>'
       + '<table class="btable"><thead><tr>'
-      + '<th>企业层级</th><th>企业数据</th><th>' + esc(REGION) + '排名</th><th>' + esc(REGION) + '平均值</th><th>行业平均值</th><th>行业先进值</th>'
+      + '<th>指标</th><th>企业数据</th><th>' + esc(REGION) + '排名</th><th>' + esc(REGION) + '平均值</th><th>行业平均值</th><th>行业先进值</th>'
       + '</tr></thead><tbody>'
-      + '<tr><td>碳资产总价值</td><td class="is-self">' + fmt(entTotal, 0) + '</td>'
-      + '<td class="is-self">' + rank + ' / ' + entCount + '</td>'
-      + '<td>' + fmt(regionTotalAvg, 0) + '</td><td>' + fmt(indAvgTotal, 0) + '</td><td>' + fmt(advancedTotal, 0) + '</td></tr>'
+      + '<tr><td>碳资产量</td><td class="is-self">' + fmt(entVolume, 2) + '</td>'
+      + '<td class="is-self">' + (rank == null ? '--' : rank + ' / ' + entCount) + '</td>'
+      + '<td>' + fmt(regionAvgVolume, 2) + '</td><td>' + fmt(indAvgVolume, 2) + '</td><td>' + fmt(advancedVolume, 2) + '</td></tr>'
       + '</tbody></table>'
-      + '<div class="btable-note">注：排名按碳资产总价值降序（价值越高排名越靠前），样本为' + esc(REGION) + '同行业报送企业。</div>';
+      + '<div class="btable-note">注：排名按碳资产量降序（量越大排名越靠前），样本为' + esc(REGION) + '同行业报送企业。</div>';
 
-    // 数据分析
-    var posWords = [];
-    posWords.push(vsRegion >= 0
-      ? '本企业碳资产总价值 ' + fmt(entTotal, 0) + ' 万元，高于' + REGION + '平均值 ' + fmt(regionTotalAvg, 0) + ' 万元（高出区域 ' + fmt(Math.abs(vsRegion), 2) + '%）'
-      : '本企业碳资产总价值 ' + fmt(entTotal, 0) + ' 万元，低于' + REGION + '平均值 ' + fmt(regionTotalAvg, 0) + ' 万元（低于区域 ' + fmt(Math.abs(vsRegion), 2) + '%）');
-    posWords.push(vsIndustry >= 0
-      ? '高于行业平均值 ' + fmt(indAvgTotal, 0) + ' 万元（高出行业 ' + fmt(Math.abs(vsIndustry), 2) + '%）'
-      : '低于行业平均值 ' + fmt(indAvgTotal, 0) + ' 万元（低于行业 ' + fmt(Math.abs(vsIndustry), 2) + '%）');
-    posWords.push(vsAdvanced <= 0
-      ? '已达到行业先进值 ' + fmt(advancedTotal, 0) + ' 万元水平'
-      : '与行业先进值 ' + fmt(advancedTotal, 0) + ' 万元相比仍有 ' + fmt(vsAdvanced, 2) + '% 差距');
+    html += '<h2 class="brief-h2">（一）资产规模与对标分析</h2>';
+    if (!HAS_VOLUME) {
+      html += '<p class="brief-p">本期未提供本企业碳资产数据，无法开展对标分析。'
+        + '表中各级基准值由本企业碳资产规模推导，本企业数据缺失时一并不可用；数据补齐后即可完成规模对比与排名。</p>';
+    } else {
+      var posWords = [];
+      posWords.push(vsRegion >= 0
+        ? '本企业碳资产量 ' + fmt(entVolume, 2) + ' 万tCO₂，高于' + REGION + '平均值 ' + fmt(regionAvgVolume, 2) + ' 万tCO₂（高出区域 ' + fmt(Math.abs(vsRegion), 2) + '%）'
+        : '本企业碳资产量 ' + fmt(entVolume, 2) + ' 万tCO₂，低于' + REGION + '平均值 ' + fmt(regionAvgVolume, 2) + ' 万tCO₂（低于区域 ' + fmt(Math.abs(vsRegion), 2) + '%）');
+      posWords.push(vsIndustry >= 0
+        ? '高于行业平均值 ' + fmt(indAvgVolume, 2) + ' 万tCO₂（高出行业 ' + fmt(Math.abs(vsIndustry), 2) + '%）'
+        : '低于行业平均值 ' + fmt(indAvgVolume, 2) + ' 万tCO₂（低于行业 ' + fmt(Math.abs(vsIndustry), 2) + '%）');
+      posWords.push(vsAdvanced >= 0
+        ? '已达到行业先进值 ' + fmt(advancedVolume, 2) + ' 万tCO₂ 水平'
+        : '与行业先进值 ' + fmt(advancedVolume, 2) + ' 万tCO₂ 相比仍有 ' + fmt(Math.abs(vsAdvanced), 2) + '% 差距');
 
-    html += '<h2 class="brief-h2">（一）资产规模与对标分析</h2>'
-      + '<p class="brief-p">' + posWords.join('，') + '。'
-      + '在' + esc(REGION) + ' ' + entCount + ' 家同行业样本企业中位列第 <strong>' + rank + '</strong> 名，'
-      + '超越区域内 ' + fmt(outperform, 1) + '% 的企业，'
-      + (outperform >= 75 ? '整体处于区域头部梯队，碳资产厚度与运营能力领先。'
-        : outperform >= 50 ? '整体处于区域中上水平，资产规模仍有向头部企业看齐的空间。'
-        : outperform >= 25 ? '整体处于区域中游偏下位置，碳资产储备需系统补充。'
-        : '整体处于区域落后梯队，碳资产储备薄弱，须尽快充实以提升履约与交易弹性。') + '</p>';
+      html += '<p class="brief-p">' + posWords.join('，') + '。'
+        + '在' + esc(REGION) + ' ' + entCount + ' 家同行业样本企业中位列第 <strong>' + rank + '</strong> 名，'
+        + '超越区域内 ' + fmt(outperform, 1) + '% 的企业，'
+        + (outperform >= 75 ? '整体处于区域头部梯队，碳资产厚度与储备能力领先。'
+          : outperform >= 50 ? '整体处于区域中上水平，资产规模仍有向头部企业看齐的空间。'
+          : outperform >= 25 ? '整体处于区域中游偏下位置，碳资产储备需系统补充。'
+          : '整体处于区域落后梯队，碳资产储备薄弱，须尽快充实以提升履约与交易弹性。') + '</p>';
+    }
 
     // 结构分析
-    html += '<h2 class="brief-h2">（二）资产结构与配置</h2>'
-      + '<p class="brief-p">本企业碳资产由配额、CCER 与其他碳资产（质押/远期/回购等）三部分构成，'
-      + '其中配额价值 ' + fmt(entAllowanceVal, 0) + ' 万元（占比 ' + (entAllowanceVal / entTotal * 100).toFixed(1) + '%）、'
-      + 'CCER 价值 ' + fmt(entCCERVal, 0) + ' 万元（占比 ' + (entCCERVal / entTotal * 100).toFixed(1) + '%）、'
-      + '其他碳资产 ' + fmt(entOther, 0) + ' 万元（占比 ' + (entOther / entTotal * 100).toFixed(1) + '%）。'
-      + (entCoverage >= 100
-        ? '配额履约覆盖率达 ' + fmt(entCoverage, 1) + '%，自有配额可完全覆盖年度履约排放，并保有 ' + fmt(entAllowance - ANNUAL_EMISSION, 0) + ' 万tCO₂ 盈余可用于市场交易或储备。'
-        : '配额履约覆盖率为 ' + fmt(entCoverage, 1) + '%，尚存 ' + fmt(ANNUAL_EMISSION - entAllowance, 0) + ' 万tCO₂ 履约缺口，需通过购入或 CCER 抵销补齐，资产结构安全垫不足。')
-      + '</p>';
+    html += '<h2 class="brief-h2">（二）资产结构与配置</h2>';
+    if (!HAS_VOLUME) {
+      html += '<p class="brief-p">本期未提供本企业碳资产数据，暂不作结构分析。</p>';
+    } else {
+      var p1 = (entAllowance / entVolume * 100).toFixed(1);
+      var p2 = (entCCER / entVolume * 100).toFixed(1);
+      var p3 = (entOther / entVolume * 100).toFixed(1);
+      var pRest = ((entCCER + entOther) / entVolume * 100).toFixed(1);
 
-    html += chartBlock(structBars([
-      { name: '配额价值', value: entAllowanceVal, color: GREEN },
-      { name: 'CCER 价值', value: entCCERVal, color: '#165dff' },
-      { name: '其他碳资产', value: entOther, color: '#ff7d00' }
-    ], '万元', 0), '（图）本企业碳资产结构分布（' + MONTH_CN + '）');
+      html += '<p class="brief-p">本企业碳资产量 ' + fmt(entVolume, 2) + ' 万tCO₂，按用途拆分为配额、CCER 与其他碳资产三部分：'
+        + '配额持有量 ' + fmt(entAllowance, 2) + ' 万tCO₂（占比 ' + p1 + '%）、'
+        + 'CCER 储备量 ' + fmt(entCCER, 2) + ' 万tCO₂（占比 ' + p2 + '%）、'
+        + '其他碳资产 ' + fmt(entOther, 2) + ' 万tCO₂（占比 ' + p3 + '%）。'
+        + '结构上以配额为绝对主体（占比 ' + p1 + '%），履约保障基础扎实；'
+        + 'CCER 与其他碳资产合计占比 ' + pRest + '%，可作为低成本抵销资源与流动性补充，'
+        + '整体配置符合「以配额保履约、以 CCER 降成本」的通用思路。</p>';
+
+      html += chartBlock(structBars([
+        { name: '配额持有量', value: entAllowance, color: GREEN },
+        { name: 'CCER 储备量', value: entCCER, color: '#165dff' },
+        { name: '其他碳资产', value: entOther, color: '#ff7d00' }
+      ], '万tCO₂', 2), '（图）本企业碳资产结构分布（' + MONTH_CN + '）');
+    }
 
     return html;
   }
 
   /** 三、优势与短板 */
   function swotHtml() {
+    if (!HAS_VOLUME) {
+      return '<div class="vs-cols">'
+        + '<div class="vs-col is-good"><h3>优势</h3><ul><li>本企业碳资产数据缺失，暂不作优势评价。</li></ul></div>'
+        + '<div class="vs-col is-bad"><h3>短板</h3><ul><li>本企业碳资产数据缺失，暂不作短板评价。</li></ul></div></div>';
+    }
     var goodItems = [];
-    if (vsRegion >= 0) goodItems.push('碳资产总价值高于' + REGION + '平均值 ' + fmt(Math.abs(vsRegion), 2) + '%，区域碳资产厚度处于靠前位置（第 ' + rank + ' / ' + entCount + ' 名）。');
-    if (vsIndustry >= 0) goodItems.push('碳资产总价值高于全国行业平均值 ' + fmt(Math.abs(vsIndustry), 2) + '%，具备行业层面的资产竞争优势。');
-    if (vsAdvanced <= 0) goodItems.push('已达到行业先进值水平（' + fmt(advancedTotal, 0) + ' 万元），跻身行业碳资产第一梯队。');
-    if (entCoverage >= 100) goodItems.push('配额履约覆盖率 ' + fmt(entCoverage, 1) + '%，自有配额盈余充足，履约风险低、交易弹性大。');
-    if (entROI >= indROI) goodItems.push('碳资产收益率 ' + fmt(entROI, 2) + '% 不低于行业均值，资产运营绩效良好。');
+    if (vsRegion >= 0) goodItems.push('碳资产量高于' + REGION + '平均值 ' + fmt(Math.abs(vsRegion), 2) + '%，区域碳资产厚度处于靠前位置（第 ' + rank + ' / ' + entCount + ' 名）。');
+    if (vsIndustry >= 0) goodItems.push('碳资产量高于全国行业平均值 ' + fmt(Math.abs(vsIndustry), 2) + '%，具备行业层面的资产规模优势。');
+    if (vsAdvanced >= 0) goodItems.push('已达到行业先进值水平（' + fmt(advancedVolume, 2) + ' 万tCO₂），跻身行业碳资产储量第一梯队。');
+    if (outperform >= 75) goodItems.push('超越区域内 ' + fmt(outperform, 1) + '% 的同行业企业，碳资产储备体系完善、可持续性强。');
     if (!goodItems.length) goodItems.push('本期碳资产各项指标未优于各级对标基准，暂无可列优势项，需全面补强。');
 
     var badItems = [];
-    if (vsIndustry < 0) badItems.push('碳资产总价值低于全国行业平均值 ' + fmt(Math.abs(vsIndustry), 2) + '%，整体资产厚度不足。');
-    if (vsRegion < 0) badItems.push('碳资产总价值低于' + REGION + '平均值 ' + fmt(Math.abs(vsRegion), 2) + '%，区域排名靠后（第 ' + rank + ' / ' + entCount + ' 名），资产储备承压。');
-    if (vsAdvanced > 0) badItems.push('与行业先进值相比仍有 ' + fmt(vsAdvanced, 2) + '% 差距，头部企业资产运营经验不足。');
-    if (entCoverage < 100) badItems.push('配额履约覆盖率仅 ' + fmt(entCoverage, 1) + '%，存在 ' + fmt(ANNUAL_EMISSION - entAllowance, 0) + ' 万tCO₂ 履约缺口，期末履约保障压力大。');
-    if (entROI < regionROI) badItems.push('碳资产收益率 ' + fmt(entROI, 2) + '% 低于区域均值 ' + fmt(regionROI, 2) + '%，交易择时与资产盘活能力偏弱。');
-    if (!badItems.length) badItems.push('各项碳资产指标均优于对标基准，暂无显著短板，需防范配额贬值与市场波动风险。');
+    if (vsIndustry < 0) badItems.push('碳资产量低于全国行业平均值 ' + fmt(Math.abs(vsIndustry), 2) + '%，整体储备厚度不足。');
+    if (vsRegion < 0) badItems.push('碳资产量低于' + REGION + '平均值 ' + fmt(Math.abs(vsRegion), 2) + '%，区域排名靠后（第 ' + rank + ' / ' + entCount + ' 名），储备规模承压。');
+    if (vsAdvanced < 0) badItems.push('与行业先进值相比仍有 ' + fmt(Math.abs(vsAdvanced), 2) + '% 差距，头部企业的储备与配置经验不足。');
+    if (outperform < 50 && outperform > 0) badItems.push('仅超越区域内 ' + fmt(outperform, 1) + '% 的企业，与头部梯队存在系统性差距。');
+    if (!badItems.length) badItems.push('各项碳资产指标均优于对标基准，暂无显著短板，需防范储备闲置与市场波动风险。');
 
     return '<div class="vs-cols">'
       + '<div class="vs-col is-good"><h3>优势</h3><ul>'
@@ -281,51 +319,72 @@
 
   /** 四、碳资产优化行动建议 */
   function actionHtml() {
+    var a1 = HAS_VOLUME
+      ? '以行业先进值 ' + fmt(advancedVolume, 2) + ' 万tCO₂ 为目标，制定分年度碳资产增持路线图，明确责任部门与时间节点，逐步缩小与区域头部企业的储备差距。'
+      : '先完成配额发放量、CCER 登记量与持有量的核算与台账核对，建立碳资产量基线，再据此制定分年度增持路线图与责任分工。';
     return '<ol class="advice-list">'
-      + '<li><strong>夯实履约安全垫：</strong>以配额覆盖率 ' + fmt(entCoverage, 1) + '% 为基线，制定分月配额/CCER 采购与储备计划，确保覆盖率稳定保持在 100% 以上，' + (entCoverage < 100 ? '优先补齐 ' + fmt(ANNUAL_EMISSION - entAllowance, 0) + ' 万tCO₂ 缺口，' : '') + '平滑履约成本、规避期末集中购碳的价格风险。</li>'
-      + '<li><strong>优化资产配置结构：</strong>在配额为主的基础上，适度提高 CCER 等低成本抵销资产占比，利用 CCER 与配额价差降低履约成本；审慎开展碳质押、碳回购等碳金融业务，盘活存量资产流动性。</li>'
-      + '<li><strong>提升碳交易运营绩效：</strong>对标区域先进企业 ' + fmt(advancedROI, 2) + '% 的收益率水平，建立碳价监测与择时交易机制，在低价为履约与储备建仓、在高点择机变现盈余配额，将收益率提升至行业先进区间。</li>'
-      + '<li><strong>开发自有 CCER 项目：</strong>梳理厂区余热余压发电、节能技改、林业碳汇等可开发减排量的场景，申报 CCER 项目，形成低成本、长周期的自有碳资产供给，降低外购依赖。</li>'
-      + '<li><strong>健全碳资产台账：</strong>完善配额发放、CCER 登记、交易流水与持仓价值的统一台账，按月开展内部对标通报，将碳资产收益率、覆盖率纳入绩效考核，实现「存量可见、收益可算」。</li>'
-      + '<li><strong>联动碳排放管理：</strong>将减排成果（强度下降）同步转化为配额盈余与 CCER 增量，形成「降碳—盈余—收益—再投入」的正向循环，并关注碳市场扩容与配额收紧带来的资产升值空间。</li>'
+      + '<li><strong>夯实碳资产储备：</strong>' + a1 + '</li>'
+      + '<li><strong>优化资产配置结构：</strong>&#x5728;配额为主的基础上，适度提高 CCER 等低成本抵销资产占比，利用 CCER 与配额的功能差异降低履约成本；审慎开展碳质押、碳回购等碳金融业务，盘活存量资产流动性。</li>'
+      + '<li><strong>提升碳资产运营绩效：</strong>&#x5BF9;标区域先进企业的碳资产管理水平，建立碳价监测与择时交易机制，在低价区间为履约与储备建仓、在高点择机变现盈余配额，提高存量资产的周转效率。</li>'
+      + '<li><strong>开发自有 CCER 项目：</strong>&#x68B3;理厂区余热余压发电、节能技改、林业碳汇等可开发减排量的场景，申报 CCER 项目，形成低成本、长周期的自有碳资产供给，降低外购依赖。</li>'
+      + '<li><strong>健全碳资产台账：</strong>&#x5B8C;善配额发放、CCER 登记与持有量的统一台账，按月开展内部对标通报，将碳资产持有量纳入企业绩效考核，实现「存量可见、变动可溯」。</li>'
+      + '<li><strong>联动碳排放管理：</strong>&#x5C06;减排成果（强度下降）同步转化为配额盈余与 CCER 增量，形成「降碳—盈余—储备—再投入」的正向循环，并关注碳市场扩容与配额收紧带来的储备价值变化。</li>'
       + '</ol>';
   }
 
-  /** 五、碳资产收益与履约保障潜力分析 */
+  /** 五、碳资产储备提升空间分析 */
   function potentialHtml() {
-    // 情景一：配额覆盖率提升至 100%（补缺口的购入成本）
-    var gap = Math.max(0, ANNUAL_EMISSION - entAllowance); // 万tCO₂
-    var costToFull = +(gap * CARBON_PRICE).toFixed(0); // 万元（万t × 元/t = 万元）
-    // 情景二：碳资产收益率提升至行业先进水平（增量年收益）
-    var roiGap = Math.max(0, advancedROI - entROI);
-    var gainToAdvanced = +(roiGap / 100 * entTotal).toFixed(0); // 万元/年
-
-    var html = '<p class="brief-p">以本企业当前碳资产状况为基线，分「配额覆盖率提升至 100%」「碳资产收益率提升至行业先进」两档目标情景，'
-      + '测算保障成本与收益潜力。计算逻辑：<strong>补缺口成本（万元）＝履约缺口（万tCO₂）× 配额市场价（元/tCO₂）</strong>；'
-      + '<strong>增量年收益（万元/年）＝（行业先进收益率 − 本企业收益率）÷ 100 × 碳资产总价值</strong>；已达标时该项计为 0。</p>'
-      + '<div class="table-caption"><span>碳资产优化潜力测算表</span><span class="unit">价值：万元；缺口：万tCO₂；收益率：%</span></div>'
+    var html = '<p class="brief-p">以本企业当前碳资产量为基线，分「达到行业平均值」「达到行业先进值」两档目标情景，测算储备提升空间。'
+      + '计算逻辑：<strong>差距量（万tCO₂）＝目标情景碳资产量 − 本企业碳资产量</strong>；'
+      + '<strong>相对提升幅度（%）＝差距量 ÷ 本企业碳资产量 × 100</strong>。'
+      + '本企业已达到目标情景时，该档差距量计为 0。</p>'
+      + '<div class="table-caption"><span>碳资产储备提升空间测算表</span><span class="unit">碳资产量：万tCO₂；提升幅度：%</span></div>'
       + '<table class="btable"><thead><tr>'
-      + '<th>目标情景</th><th>当前水平</th><th>目标水平</th><th>差距</th><th>投入/增量</th><th>说明</th>'
-      + '</tr></thead><tbody>'
-      + '<tr><td>情景一：覆盖率→100%</td>'
-      + '<td>' + fmt(entCoverage, 1) + '%</td><td>100.0%</td>'
-      + '<td class="' + (gap > 0 ? 'is-pos' : 'is-neg') + '">' + (gap > 0 ? '缺口 ' + fmt(gap, 0) : '已盈余') + '</td>'
-      + '<td><strong>' + fmt(costToFull, 0) + '</strong></td><td>' + (gap > 0 ? '需购碳补足缺口' : '无需额外投入') + '</td></tr>'
-      + '<tr><td>情景二：收益率→行业先进</td>'
-      + '<td>' + fmt(entROI, 2) + '%</td><td>' + fmt(advancedROI, 2) + '%</td>'
-      + '<td class="' + (roiGap > 0 ? 'is-pos' : 'is-neg') + '">' + (roiGap > 0 ? '+' + fmt(roiGap, 2) : '已达标') + '</td>'
-      + '<td><strong>' + fmt(gainToAdvanced, 0) + '</strong></td><td>增量年收益</td></tr>'
+      + '<th>目标情景</th><th>本企业碳资产量</th><th>目标水平</th><th>差距量</th><th>相对提升幅度</th>'
+      + '</tr></thead><tbody>';
+
+    /** 差距量单元格：不可计算时写 --；仍需增持为红，已达标为绿 */
+    function gapTd(v) {
+      if (v == null || !isFinite(v)) return '<td>--</td>';
+      return '<td class="' + (v > 0 ? 'is-pos' : 'is-neg') + '">' + fmt(v, 2) + '</td>';
+    }
+
+    /** 相对提升幅度单元格：不可计算时写 -- */
+    function pctTd(v) {
+      if (v == null || !isFinite(v)) return '<td>--</td>';
+      return '<td class="' + (v > 0 ? 'is-pos' : 'is-neg') + '"><strong>' + fmt(v, 2) + '%</strong></td>';
+    }
+
+    html += '<tr><td>情景一：达到行业平均值</td>'
+      + '<td>' + fmt(entVolume, 2) + '</td><td>' + fmt(indAvgVolume, 2) + '</td>'
+      + gapTd(gapAvg) + pctTd(pctAvg) + '</tr>'
+      + '<tr><td>情景二：达到行业先进值</td>'
+      + '<td>' + fmt(entVolume, 2) + '</td><td>' + fmt(advancedVolume, 2) + '</td>'
+      + gapTd(gapAdvanced) + pctTd(pctAdvanced) + '</tr>'
       + '</tbody></table>'
-      + '<div class="btable-note">注：覆盖率缺口以年度履约排放 ' + ANNUAL_EMISSION + ' 万tCO₂ 为基准；增量年收益按碳资产总价值 ' + fmt(entTotal, 0) + ' 万元测算。</div>';
+      + '<div class="btable-note">注：差距量 = 目标值 − 本企业值，正值（红）表示仍需增持；已达到目标情景时计为 0。</div>';
+
+    if (!HAS_VOLUME) {
+      html += '<p class="brief-p">本期未提供本企业碳资产数据，无法测算储备提升空间。'
+        + '建议先行完成配额发放量、CCER 登记量与持有量的核算与台账核对，建立碳资产量基线；'
+        + '数据补齐后即可自动生成两档情景的储备提升空间测算。</p>'
+        + '<p class="brief-p">建议按「保障优先、储备并重」原则推进碳资产管理工作：先把持有量基线建准、把台账建全，'
+        + '再据此排定分年度增持与结构优化计划，并将碳资产持有量纳入企业年度经营考核。</p>';
+      return html;
+    }
+
+    /** 单档情景描述句（不含结尾标点） */
+    function scenText(name, target, gap, pct) {
+      if (gap <= 0) return '本企业碳资产量已达' + name + '水平（' + fmt(target, 2) + ' 万tCO₂），无需增持';
+      return '达到' + name + '水平需增持 <strong>' + fmt(gap, 2) + '</strong> 万tCO₂（相对提升 <strong>' + fmt(pct, 2) + '%</strong>）';
+    }
 
     html += '<p class="brief-p">测算结果显示：'
-      + (gap > 0
-        ? '本企业需投入约 <strong>' + fmt(costToFull, 0) + '</strong> 万元补足履约缺口、将覆盖率提升至 100%，'
-        : '本企业配额已盈余，覆盖率达标，可节省约 ' + fmt(costToFull, 0) + ' 万元的潜在购碳支出，')
-      + '若将碳资产收益率提升至行业先进水平（' + fmt(advancedROI, 2) + '%），可带来约 <strong>' + fmt(gainToAdvanced, 0) + '</strong> 万元/年的增量收益。</p>'
-      + '<p class="brief-p">建议按「保障优先、收益并重」原则排定优化优先级：先以情景一筑牢履约安全垫、消除期末履约风险，'
-      + '再以情景二通过择时交易与资产盘活增厚收益。两项叠加，可在' + esc(REGION) + '同行业中进一步稳固碳资产竞争位势，'
-      + '并将碳资产规模与运营绩效统一纳入企业资产负债表与年度经营考核。</p>';
+      + scenText('行业平均', indAvgVolume, gapAvg, pctAvg) + '；'
+      + scenText('行业先进', advancedVolume, gapAdvanced, pctAdvanced) + '。</p>'
+      + '<p class="brief-p">建议按「保障优先、储备并重」原则排定储备提升优先级：先把持有量补齐至行业平均水平、消除与同业的规模断层，'
+      + '再向行业先进水平看齐，同步优化配额与 CCER 的配置比例。两项叠加，可在' + esc(REGION)
+      + '同行业中进一步稳固碳资产竞争位势，并将碳资产持有量纳入企业年度经营考核。</p>';
     return html;
   }
 
@@ -353,7 +412,7 @@
       + '<li class="toc-l2"><a href="#sec-2-2">（二）资产结构与配置</a></li>'
       + '<li class="toc-l1"><a href="#sec-3">三、优势与短板</a></li>'
       + '<li class="toc-l1"><a href="#sec-4">四、碳资产优化行动建议</a></li>'
-      + '<li class="toc-l1"><a href="#sec-5">五、碳资产收益与履约保障潜力分析</a></li>'
+      + '<li class="toc-l1"><a href="#sec-5">五、碳资产储备提升空间分析</a></li>'
       + '</ol></div>';
 
     // 正文
@@ -373,7 +432,7 @@
       + '<h1 class="brief-h1" id="sec-4">四、碳资产优化行动建议</h1>'
       + actionHtml()
 
-      + '<h1 class="brief-h1" id="sec-5">五、碳资产收益与履约保障潜力分析</h1>'
+      + '<h1 class="brief-h1" id="sec-5">五、碳资产储备提升空间分析</h1>'
       + potentialHtml()
       + '</div>';
 

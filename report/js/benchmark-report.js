@@ -5,7 +5,9 @@
  *   · 本企业数据锚定平台既有口径（2026 年强度序列），年份推移按能效年改善 1.2% 折算
  *   · 区域均值按省份稳定偏移（工业结构差异），全国 = 行业均值口径
  *   · 区域排名、企业数等均由种子确定性生成，同条件结果一致
- * - 报告仅做企业层级对标（强度/排名/潜力），不含行业特定内容，各行业通用
+ * - 报告仅做企业层级对标（强度 / 排名 / 降碳空间），不含行业特定内容，各行业通用
+ * - 本企业只采集「单位产品碳排放强度」一项：年产量、年排放总量、工序级排放均无法获取，
+ *   因此第五章只出单位产品口径的降碳空间（强度差距 tCO₂/t ＋ 相对降幅 %），不出年减排量
  * - 「下载报告」用 html2canvas + jsPDF 生成 PDF
  */
 
@@ -21,7 +23,13 @@
   function pad2(n) { return String(n).padStart(2, '0'); }
   function lastDay(y, m) { return new Date(y, m, 0).getDate(); }
   function fmt(n, d) {
+    if (n == null || !isFinite(n)) return '--';
     return Number(n).toLocaleString('zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  /** 带符号的百分比文字；不可计算时返回 '--' */
+  function pct(n, d) {
+    if (n == null || !isFinite(n)) return '--';
+    return (n > 0 ? '+' : '') + fmt(n, d) + '%';
   }
   function esc(s) {
     return String(s == null ? '' : s)
@@ -65,13 +73,16 @@
   var SEED = (strHash(REGION) ^ Math.imul(Y, 131) ^ M) >>> 0;
   var rnd = mulberry32(SEED);
 
-  /* ---------- 企业层级数据（锚定平台口径） ---------- */
+  /* ---------- 本企业数据（入参直取，零兜底） ---------- */
 
-  // 平台 2026 年单位产品碳排放强度序列（与双碳管理月度简报同源，tCO₂/t）
-  var INTENSITY_2026 = [0.7605, 0.7573, 0.7637, 0.7630, 0.7646, 0.7653, 0.7658, 0.7662, 0.7655, 0.7661, 0.7657, 0.7663];
+  // ?intensity= 本企业单位产品碳排放强度（tCO₂/t）。本报告不采集年产量等其它企业数据。
+  var IN_INTENSITY = qs.has('intensity') ? Number(qs.get('intensity')) : 0.7662;
 
-  // 本企业：年份推移按能效年改善约 1.2% 折算（早年强度更高）
-  var entIntensity = +(INTENSITY_2026[M - 1] * (1 + (2026 - Y) * 0.012)).toFixed(4);
+  var HAS_INTENSITY = isFinite(IN_INTENSITY) && IN_INTENSITY > 0;
+
+  var entIntensity = HAS_INTENSITY ? +IN_INTENSITY.toFixed(4) : null;   // 本企业强度（tCO₂/t）
+
+  /* ---------- 对标基准（L3 兜底：区域/行业口径，同条件结果一致） ---------- */
 
   // 行业均值（全国同行业）：基准 0.8020，早年更高（年改善 1.5%），月际微扰
   var indAvg = +((0.8020 + (2026 - Y) * 0.015) * (1 + (rnd() - 0.5) * 0.008)).toFixed(4);
@@ -86,23 +97,31 @@
   // 区域样本企业数：全国 1400~2300 家；省份 45~225 家
   var entCount = IS_NATIONAL ? Math.round(1400 + rnd() * 900) : Math.round(45 + rnd() * 180);
 
-  // 区域排名：由本企业与区域均值的相对位置确定（确定性，不另取随机）
-  var rankPct = clamp(0.5 - (regionAvg - entIntensity) / (regionAvg * 0.22), 0.02, 0.98);
-  var rank = Math.max(1, Math.round(entCount * rankPct));
-  var outperform = +((1 - rank / entCount) * 100).toFixed(1);
+  /* ---------- 对标结果（依赖本企业强度；无有效数据时一律为 null，渲染为 --） ---------- */
 
-  var vsRegion = +((entIntensity - regionAvg) / regionAvg * 100).toFixed(2);   // 负=优于区域均值
-  var vsIndustry = +((entIntensity - indAvg) / indAvg * 100).toFixed(2);
-  var vsAdvanced = +((entIntensity - advanced) / advanced * 100).toFixed(2);
+  var rank = null, outperform = null;
+  if (HAS_INTENSITY) {
+    // 区域排名：由本企业与区域均值的相对位置确定（确定性，不另取随机）
+    var rankPct = clamp(0.5 - (regionAvg - entIntensity) / (regionAvg * 0.22), 0.02, 0.98);
+    rank = Math.max(1, Math.round(entCount * rankPct));
+    outperform = +((1 - rank / entCount) * 100).toFixed(1);
+  }
 
-  /* ---------- 减排潜力（企业层级，行业通用口径） ---------- */
+  var vsRegion = HAS_INTENSITY ? +((entIntensity - regionAvg) / regionAvg * 100).toFixed(2) : null;   // 负=优于区域均值
+  var vsIndustry = HAS_INTENSITY ? +((entIntensity - indAvg) / indAvg * 100).toFixed(2) : null;
+  var vsAdvanced = HAS_INTENSITY ? +((entIntensity - advanced) / advanced * 100).toFixed(2) : null;
 
-  // 本企业年产量（万t 产品/年）：由平台 2026 年排放总量与强度反推，年份推移同步折算
-  var ANNUAL_OUTPUT = +((6058.01 / 0.7663) * (1 + (Y - 2026) * 0.01)).toFixed(0);
+  /* ---------- 降碳空间（单位产品口径；只依赖本企业强度，不采集产量） ---------- */
 
-  // 两档目标情景：达到行业均值 / 达到行业先进值
-  var potToAvg = +(Math.max(0, entIntensity - indAvg) * ANNUAL_OUTPUT).toFixed(2);      // 万tCO₂/年
-  var potToAdvanced = +(Math.max(0, entIntensity - advanced) * ANNUAL_OUTPUT).toFixed(2);
+  // 强度差距（tCO₂/t）与相对降幅（%）：本企业已优于目标情景时降幅计 0
+  function gapOf(target) { return HAS_INTENSITY ? +(entIntensity - target).toFixed(4) : null; }
+  function cutPctOf(target) {
+    if (!HAS_INTENSITY) return null;
+    return +((Math.max(0, entIntensity - target) / entIntensity) * 100).toFixed(2);
+  }
+  var gapToAvg = gapOf(indAvg), gapToAdvanced = gapOf(advanced);
+  var cutPctToAvg = cutPctOf(indAvg), cutPctToAdvanced = cutPctOf(advanced);
+
 
   /* ---------- 图表 ---------- */
 
@@ -131,34 +150,44 @@
 
   /** 摘要 · 对标结论概览 */
   function summaryHtml() {
-    var levelWord = entIntensity <= advanced ? '已达行业先进水平'
-      : (entIntensity <= indAvg ? '优于行业平均、距先进有差距' : '落后于行业平均，亟需提升');
-    var levelCls = entIntensity <= indAvg ? 'is-neg' : 'is-pos';
+    var levelWord = !HAS_INTENSITY ? '本企业数据缺失'
+      : (entIntensity <= advanced ? '已达行业先进水平'
+        : (entIntensity <= indAvg ? '优于行业平均、距先进有差距' : '落后于行业平均，亟需提升'));
+    var levelCls = !HAS_INTENSITY ? 'is-flat' : (entIntensity <= indAvg ? 'is-neg' : 'is-pos');
+
+    /** 对比小字：强度越低越好，v<=0 为「优于」；不可计算时写「本企业数据缺失」 */
+    function cmpDelta(v, unit) {
+      if (v == null) return '<div class="kpi-delta is-flat">本企业数据缺失</div>';
+      var better = v <= 0;
+      return '<div class="kpi-delta ' + (better ? 'is-neg' : 'is-pos') + '">本企业' + (better ? '优于' : '高于') + unit + ' ' + fmt(Math.abs(v), 2) + '%</div>';
+    }
 
     var html = '<div class="kpi-grid">'
       + '<div class="kpi-card is-self"><div class="kpi-name">本企业碳排放强度</div><div class="kpi-val">' + fmt(entIntensity, 4) + '<small> tCO₂/t</small></div><div class="kpi-delta is-flat">' + esc(MONTH_CN) + ' 当月口径</div></div>'
-      + '<div class="kpi-card"><div class="kpi-name">' + esc(REGION) + '平均值</div><div class="kpi-val">' + fmt(regionAvg, 4) + '<small> tCO₂/t</small></div><div class="kpi-delta ' + (vsRegion <= 0 ? 'is-neg' : 'is-pos') + '">本企业' + (vsRegion <= 0 ? '优于' : '高于') + '区域 ' + fmt(Math.abs(vsRegion), 2) + '%</div></div>'
-      + '<div class="kpi-card"><div class="kpi-name">行业平均值（全国）</div><div class="kpi-val">' + fmt(indAvg, 4) + '<small> tCO₂/t</small></div><div class="kpi-delta ' + (vsIndustry <= 0 ? 'is-neg' : 'is-pos') + '">本企业' + (vsIndustry <= 0 ? '优于' : '高于') + '行业 ' + fmt(Math.abs(vsIndustry), 2) + '%</div></div>'
-      + '<div class="kpi-card"><div class="kpi-name">行业先进值</div><div class="kpi-val">' + fmt(advanced, 4) + '<small> tCO₂/t</small></div><div class="kpi-delta ' + (vsAdvanced <= 0 ? 'is-neg' : 'is-pos') + '">' + (vsAdvanced <= 0 ? '已达先进水平' : '距先进差距 ' + fmt(vsAdvanced, 2) + '%') + '</div></div>'
-      + '<div class="kpi-card"><div class="kpi-name">' + esc(REGION) + '排名</div><div class="kpi-val">第 ' + rank + ' 名<small> / 共 ' + entCount + ' 家</small></div><div class="kpi-delta is-flat">区域内同行业企业口径</div></div>'
+      + '<div class="kpi-card"><div class="kpi-name">' + esc(REGION) + '平均值</div><div class="kpi-val">' + fmt(regionAvg, 4) + '<small> tCO₂/t</small></div>' + cmpDelta(vsRegion, '区域') + '</div>'
+      + '<div class="kpi-card"><div class="kpi-name">行业平均值（全国）</div><div class="kpi-val">' + fmt(indAvg, 4) + '<small> tCO₂/t</small></div>' + cmpDelta(vsIndustry, '行业') + '</div>'
+      + '<div class="kpi-card"><div class="kpi-name">行业先进值</div><div class="kpi-val">' + fmt(advanced, 4) + '<small> tCO₂/t</small></div>'
+      + '<div class="kpi-delta ' + (vsAdvanced == null ? 'is-flat' : (vsAdvanced <= 0 ? 'is-neg' : 'is-pos')) + '">'
+      + (vsAdvanced == null ? '本企业数据缺失' : (vsAdvanced <= 0 ? '已达先进水平' : '距先进差距 ' + fmt(vsAdvanced, 2) + '%')) + '</div></div>'
+      + '<div class="kpi-card"><div class="kpi-name">' + esc(REGION) + '排名</div><div class="kpi-val">' + (rank == null ? '--' : '第 ' + rank + ' 名') + '<small>' + (rank == null ? '' : ' / 共 ' + entCount + ' 家') + '</small></div><div class="kpi-delta is-flat">区域内同行业企业口径</div></div>'
       + '<div class="kpi-card"><div class="kpi-name">超越区域企业比例</div><div class="kpi-val">' + fmt(outperform, 1) + '<small> %</small></div><div class="kpi-delta ' + levelCls + '">' + levelWord + '</div></div>'
       + '</div>';
 
     // 排名横幅
     html += '<div class="rank-banner">'
-      + '<div class="rank-no">No.' + rank + '<small>/ ' + entCount + ' 家</small></div>'
+      + '<div class="rank-no">' + (rank == null ? 'No.--' : 'No.' + rank) + '<small>/ ' + entCount + ' 家</small></div>'
       + '<div class="rank-info"><div class="t">' + esc(REGION) + '同行业企业碳排放强度排名（' + esc(MONTH_CN) + '），超越区域内 <strong>' + fmt(outperform, 1) + '%</strong> 的企业</div>'
-      + '<div class="rank-track"><i style="width:' + clamp(outperform, 1, 100).toFixed(1) + '%"></i></div>'
+      + '<div class="rank-track"><i style="width:' + (outperform == null ? 0 : clamp(outperform, 1, 100)).toFixed(1) + '%"></i></div>'
       + '<div class="s">排名口径：按单位产品碳排放强度升序排列，数据来源于区域碳排放数据报送平台与行业统计</div></div>'
       + '</div>';
 
-    // 对标总览条形图
-    html += chartBlock(cmpBars([
-      { name: '本企业（' + ORG + '）', value: entIntensity, color: '#ff7d00', self: true },
-      { name: REGION + '平均值', value: regionAvg, color: GREEN },
-      { name: '行业平均值（全国）', value: indAvg, color: '#165dff' },
-      { name: '行业先进值', value: advanced, color: '#722ed1' }
-    ], 'tCO₂/t', 4), '（图）企业层级碳排放强度对标总览（' + MONTH_CN + '）');
+    // 对标总览条形图（本企业强度缺失时不画本企业条）
+    var bars = [];
+    if (HAS_INTENSITY) bars.push({ name: '本企业（' + ORG + '）', value: entIntensity, color: '#ff7d00', self: true });
+    bars.push({ name: REGION + '平均值', value: regionAvg, color: GREEN });
+    bars.push({ name: '行业平均值（全国）', value: indAvg, color: '#165dff' });
+    bars.push({ name: '行业先进值', value: advanced, color: '#722ed1' });
+    html += chartBlock(cmpBars(bars, 'tCO₂/t', 4), '（图）企业层级碳排放强度对标总览（' + MONTH_CN + '）');
 
     return html;
   }
@@ -171,8 +200,9 @@
       + '将本企业碳排放强度与区域平均值、行业平均值、行业先进值进行四维对比，量化差距、定位短板。</p>'
       + '<p class="brief-p">报告核心思路：<strong>一排名、二对比、三归因、四建议</strong>——'
       + '先以强度排名锚定企业在区域同行业中的位置；再与区域、行业、先进三级基准逐层对比；'
-      + '结合对标结果归因优势与短板；最终给出降碳行动建议与减排潜力测算，为企业节能降碳改造与碳资产管理提供决策依据。</p>'
+      + '结合对标结果归因优势与短板；最终给出降碳行动建议与单位产品降碳空间测算，为企业节能降碳改造与碳资产管理提供决策依据。</p>'
       + '<p class="brief-p">数据口径说明：碳排放强度为单位产品碳排放强度（tCO₂/t），适用于各行业企业间横向对比；'
+      + '本报告只采集企业单位产品碳排放强度一项数据，年产量与年排放总量不在采集口径内，故降碳空间统一按单位产品口径列示。'
       + '区域与行业数据来源于区域碳排放数据报送平台、行业协会统计及公开披露信息，样本企业 ' + entCount + ' 家；先进值取行业前 10% 企业水平。</p>';
   }
 
@@ -200,28 +230,56 @@
       ? '已达到行业先进值 ' + fmt(advanced, 4) + ' tCO₂/t 水平'
       : '与行业先进值 ' + fmt(advanced, 4) + ' tCO₂/t 相比仍有 ' + fmt(vsAdvanced, 2) + '% 差距');
 
-    html += '<h2 class="brief-h2">（一）数据分析</h2>'
-      + '<p class="brief-p">' + posWords.join('，') + '。'
-      + '在' + esc(REGION) + ' ' + entCount + ' 家同行业样本企业中位列第 <strong>' + rank + '</strong> 名，'
-      + '超越区域内 ' + fmt(outperform, 1) + '% 的企业，'
-      + (outperform >= 75 ? '整体处于区域头部梯队，碳绩效管理水平领先。'
-        : outperform >= 50 ? '整体处于区域中上水平，仍有向头部企业看齐的空间。'
-        : outperform >= 25 ? '整体处于区域中游偏下位置，强度管控需系统加强。'
-        : '整体处于区域落后梯队，节能降碳形势严峻，须尽快采取专项措施。') + '</p>';
+    html += '<h2 class="brief-h2">（一）数据分析</h2>';
+    if (!HAS_INTENSITY) {
+      html += '<p class="brief-p">本期未提供本企业碳排放强度数据，无法开展对标分析。'
+        + '表中' + esc(REGION) + '平均值 ' + fmt(regionAvg, 4) + '、行业平均值 ' + fmt(indAvg, 4) + '、行业先进值 ' + fmt(advanced, 4) + ' tCO₂/t 为公开统计口径，仅供参照；'
+        + '本企业数据补齐后即可完成四维对比与排名。</p>';
+    } else {
+      var posWords = [];
+      posWords.push(vsRegion <= 0
+        ? '本企业碳排放强度 ' + fmt(entIntensity, 4) + ' tCO₂/t，低于' + REGION + '平均值 ' + fmt(regionAvg, 4) + ' tCO₂/t（优于区域 ' + fmt(Math.abs(vsRegion), 2) + '%）'
+        : '本企业碳排放强度 ' + fmt(entIntensity, 4) + ' tCO₂/t，高于' + REGION + '平均值 ' + fmt(regionAvg, 4) + ' tCO₂/t（超出区域 ' + fmt(vsRegion, 2) + '%）');
+      posWords.push(vsIndustry <= 0
+        ? '低于行业平均值 ' + fmt(indAvg, 4) + ' tCO₂/t（优于行业 ' + fmt(Math.abs(vsIndustry), 2) + '%）'
+        : '高于行业平均值 ' + fmt(indAvg, 4) + ' tCO₂/t（超出行业 ' + fmt(vsIndustry, 2) + '%）');
+      posWords.push(vsAdvanced <= 0
+        ? '已达到行业先进值 ' + fmt(advanced, 4) + ' tCO₂/t 水平'
+        : '与行业先进值 ' + fmt(advanced, 4) + ' tCO₂/t 相比仍有 ' + fmt(vsAdvanced, 2) + '% 差距');
+
+      html += '<p class="brief-p">' + posWords.join('，') + '。'
+        + '在' + esc(REGION) + ' ' + entCount + ' 家同行业样本企业中位列第 <strong>' + rank + '</strong> 名，'
+        + '超越区域内 ' + fmt(outperform, 1) + '% 的企业，'
+        + (outperform >= 75 ? '整体处于区域头部梯队，碳绩效管理水平领先。'
+          : outperform >= 50 ? '整体处于区域中上水平，仍有向头部企业看齐的空间。'
+          : outperform >= 25 ? '整体处于区域中游偏下位置，强度管控需系统加强。'
+          : '整体处于区域落后梯队，节能降碳形势严峻，须尽快采取专项措施。') + '</p>';
+    }
 
     // 建议方案
-    html += '<h2 class="brief-h2">（二）建议方案</h2>'
-      + '<p class="brief-p">结合企业碳强度对标结果，建议：'
-      + (vsAdvanced > 0
-        ? '以行业先进值 ' + fmt(advanced, 4) + ' tCO₂/t 为目标值，制定年度强度下降路线图，明确责任部门与时间节点，分阶段压降单位产品碳排放；'
-        : '巩固行业先进水平，持续跟踪区域头部企业动态，防止强度反弹；')
-      + '建立「月度对标、季度评估」机制，将强度指标纳入企业绩效考核；'
-      + '积极申报国家及省级节能降碳专项资金，借力政策工具加快技改落地。</p>';
+    html += '<h2 class="brief-h2">（二）建议方案</h2>';
+    if (!HAS_INTENSITY) {
+      html += '<p class="brief-p">本企业碳排放强度数据尚未报送，建议：优先完成企业层级碳排放量与产品产量的核算、计量校核，'
+        + '确保强度指标可算、可比、可追溯；同步建立「月度对标、季度评估」机制，将强度指标纳入企业绩效考核；'
+        + '积极申报国家及省级节能降碳专项资金，借力政策工具加快技改落地。</p>';
+    } else {
+      html += '<p class="brief-p">结合企业碳强度对标结果，建议：'
+        + (vsAdvanced > 0
+          ? '以行业先进值 ' + fmt(advanced, 4) + ' tCO₂/t 为目标值，制定年度强度下降路线图，明确责任部门与时间节点，分阶段压降单位产品碳排放；'
+          : '巩固行业先进水平，持续跟踪区域头部企业动态，防止强度反弹；')
+        + '建立「月度对标、季度评估」机制，将强度指标纳入企业绩效考核；'
+        + '积极申报国家及省级节能降碳专项资金，借力政策工具加快技改落地。</p>';
+    }
     return html;
   }
 
   /** 三、优势与短板 */
   function swotHtml() {
+    if (!HAS_INTENSITY) {
+      return '<div class="vs-cols">'
+        + '<div class="vs-col is-good"><h3>优势</h3><ul><li>本企业碳排放强度数据缺失，暂不作优势评价。</li></ul></div>'
+        + '<div class="vs-col is-bad"><h3>短板</h3><ul><li>本企业碳排放强度数据缺失，暂不作短板评价。</li></ul></div></div>';
+    }
     var goodItems = [];
     if (vsRegion <= 0) goodItems.push('碳排放强度优于' + REGION + '平均值 ' + fmt(Math.abs(vsRegion), 2) + '%，区域碳绩效处于靠前位置（第 ' + rank + ' / ' + entCount + ' 名）。');
     if (vsIndustry <= 0) goodItems.push('碳排放强度优于全国行业平均值 ' + fmt(Math.abs(vsIndustry), 2) + '%，具备行业层面的碳竞争力。');
@@ -257,36 +315,57 @@
       + '</ol>';
   }
 
-  /** 五、企业减排潜力深度分析 */
+  /** 五、企业降碳空间深度分析 */
   function potentialHtml() {
-    var html = '<p class="brief-p">以本企业当前碳排放强度为基线，分「达到行业平均值」「达到行业先进值」两档目标情景，测算年减排潜力。'
-      + '计算逻辑：<strong>年减排潜力（万tCO₂/年）＝（本企业碳排放强度 − 目标情景强度）× 企业年产量（万t）</strong>；'
-      + '本企业已优于目标情景时，该档潜力计为 0。</p>'
-      + '<div class="table-caption"><span>减排潜力测算表（企业层级）</span><span class="unit">强度：tCO₂/t；产量：万t/年；潜力：万tCO₂/年</span></div>'
+    var html = '<p class="brief-p">以本企业当前碳排放强度为基线，分「达到行业平均值」「达到行业先进值」两档目标情景，测算单位产品降碳空间。'
+      + '计算逻辑：<strong>强度差距（tCO₂/t）＝本企业碳排放强度 − 目标情景强度</strong>；'
+      + '<strong>相对降幅（%）＝强度差距 ÷ 本企业碳排放强度 × 100</strong>。'
+      + '本企业已优于目标情景时，该档降幅计为 0。</p>'
+      + '<div class="table-caption"><span>降碳空间测算表（企业层级）</span><span class="unit">强度：tCO₂/t；降幅：%</span></div>'
       + '<table class="btable"><thead><tr>'
-      + '<th>目标情景</th><th>本企业强度</th><th>目标强度</th><th>强度差距</th><th>年产量</th><th>年减排潜力</th>'
-      + '</tr></thead><tbody>'
-      + '<tr><td>情景一：达到行业平均值</td>'
+      + '<th>目标情景</th><th>本企业强度</th><th>目标强度</th><th>强度差距</th><th>相对降幅</th>'
+      + '</tr></thead><tbody>';
+
+    /** 强度差距单元格：不可计算时写 -- */
+    function gapTd(v) {
+      if (v == null || !isFinite(v)) return '<td>--</td>';
+      return '<td class="' + (v > 0 ? 'is-pos' : 'is-neg') + '">' + (v > 0 ? '+' : '') + fmt(+v.toFixed(4), 4) + '</td>';
+    }
+
+    /** 相对降幅单元格：不可计算时写 --；有降碳空间为红，已达标为绿 */
+    function cutTd(v) {
+      if (v == null || !isFinite(v)) return '<td>--</td>';
+      return '<td class="' + (v > 0 ? 'is-pos' : 'is-neg') + '"><strong>' + fmt(v, 2) + '%</strong></td>';
+    }
+
+    html += '<tr><td>情景一：达到行业平均值</td>'
       + '<td>' + fmt(entIntensity, 4) + '</td><td>' + fmt(indAvg, 4) + '</td>'
-      + '<td class="' + (entIntensity - indAvg > 0 ? 'is-pos' : 'is-neg') + '">' + (entIntensity - indAvg > 0 ? '+' : '') + fmt(+(entIntensity - indAvg).toFixed(4), 4) + '</td>'
-      + '<td>' + fmt(ANNUAL_OUTPUT, 0) + '</td>'
-      + '<td><strong>' + fmt(potToAvg, 2) + '</strong></td></tr>'
+      + gapTd(gapToAvg) + cutTd(cutPctToAvg) + '</tr>'
       + '<tr><td>情景二：达到行业先进值</td>'
       + '<td>' + fmt(entIntensity, 4) + '</td><td>' + fmt(advanced, 4) + '</td>'
-      + '<td class="' + (entIntensity - advanced > 0 ? 'is-pos' : 'is-neg') + '">' + (entIntensity - advanced > 0 ? '+' : '') + fmt(+(entIntensity - advanced).toFixed(4), 4) + '</td>'
-      + '<td>' + fmt(ANNUAL_OUTPUT, 0) + '</td>'
-      + '<td><strong>' + fmt(potToAdvanced, 2) + '</strong></td></tr>'
+      + gapTd(gapToAdvanced) + cutTd(cutPctToAdvanced) + '</tr>'
       + '</tbody></table>'
-      + '<div class="btable-note">注：强度差距 = 本企业 − 目标值，正值（红）表示存在减排空间；年产量按企业近一年产品产量口径。</div>';
+      + '<div class="btable-note">注：强度差距 = 本企业 − 目标值，正值（红）表示存在降碳空间；相对降幅以本企业当前碳排放强度为分母。</div>';
 
-    var carbonPrice = 90; // 元/tCO₂，全国碳市场参考均价
-    var gain = potToAdvanced * carbonPrice; // 万元
-    html += '<p class="brief-p">测算结果显示：本企业达到行业平均水平可年减排 <strong>' + fmt(potToAvg, 2) + '</strong> 万tCO₂，'
-      + '达到行业先进水平可年减排 <strong>' + fmt(potToAdvanced, 2) + '</strong> 万tCO₂。</p>'
-      + '<p class="brief-p">按当前全国碳市场均价约 ' + carbonPrice + ' 元/tCO₂ 估算，先进情景下减排成果若全部转化为配额盈余并择机变现，'
-      + '相当于年均碳资产收益空间约 <strong>' + fmt(gain / 100, 1) + '</strong> 百万元（' + fmt(gain, 0) + ' 万元），'
-      + '可显著改善配额盈缺状况、增厚碳资产收益。建议按「潜力大、投资省、见效快」原则排定改造优先级，分年度滚动实施，'
-      + '并将减排量纳入碳资产台账统一管理与核算。</p>';
+    if (!HAS_INTENSITY) {
+      html += '<p class="brief-p">本期未提供本企业碳排放强度数据，无法测算两档情景的降碳空间。'
+        + '建议先行完成企业层级碳排放量与产品产量的核算与计量校核，确保强度指标可算、可比、可追溯；'
+        + '数据补齐后即可自动生成单位产品口径的降碳空间测算。</p>';
+      return html;
+    }
+
+    /** 单档情景描述句（不含结尾标点） */
+    function scenText(name, target, gap, cut) {
+      if (gap <= 0) return '本企业碳排放强度已达' + name + '水平（' + fmt(target, 4) + ' tCO₂/t），该档无降碳空间';
+      return '达到' + name + '水平可降低单位产品碳排放 <strong>' + fmt(gap, 4) + '</strong> tCO₂/t（相对降幅 <strong>' + fmt(cut, 2) + '%</strong>）';
+    }
+
+    html += '<p class="brief-p">测算结果显示：'
+      + scenText('行业平均', indAvg, gapToAvg, cutPctToAvg) + '；'
+      + scenText('行业先进', advanced, gapToAdvanced, cutPctToAdvanced) + '。</p>'
+      + '<p class="brief-p">上述降碳空间为单位产品口径（tCO₂/t）——本报告不采集企业年产量与年排放总量数据，'
+      + '年减排总量需结合企业年度产品产量另行核算。建议按「潜力大、投资省、见效快」原则排定能效碳效改造优先级，'
+      + '分年度滚动实施，并将强度下降成果纳入碳资产管理台账统一管理与核算。</p>';
     return html;
   }
 
@@ -314,7 +393,7 @@
       + '<li class="toc-l2"><a href="#sec-2-2">（二）建议方案</a></li>'
       + '<li class="toc-l1"><a href="#sec-3">三、优势与短板</a></li>'
       + '<li class="toc-l1"><a href="#sec-4">四、降碳行动建议</a></li>'
-      + '<li class="toc-l1"><a href="#sec-5">五、企业减排潜力深度分析</a></li>'
+      + '<li class="toc-l1"><a href="#sec-5">五、企业降碳空间深度分析</a></li>'
       + '</ol></div>';
 
     // 正文
@@ -334,7 +413,7 @@
       + '<h1 class="brief-h1" id="sec-4">四、降碳行动建议</h1>'
       + actionHtml()
 
-      + '<h1 class="brief-h1" id="sec-5">五、企业减排潜力深度分析</h1>'
+      + '<h1 class="brief-h1" id="sec-5">五、企业降碳空间深度分析</h1>'
       + potentialHtml()
       + '</div>';
 
